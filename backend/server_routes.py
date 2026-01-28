@@ -3,6 +3,261 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 
+# ==========================================
+# DISCIPLINES, BOOKING CODES, ACTIVITIES
+# ==========================================
+
+def add_master_data_routes(api_router, db, get_current_user):
+    """Routes for disciplines, booking codes (prestations), and activities"""
+    
+    # --- DISCIPLINES ---
+    @api_router.get('/disciplines')
+    async def get_disciplines(current_user: dict = Depends(get_current_user)):
+        """Get all disciplines"""
+        disciplines = await db.disciplines.find({}, {'_id': 0}).to_list(100)
+        if not disciplines:
+            # Seed default disciplines if none exist
+            await seed_disciplines(db)
+            disciplines = await db.disciplines.find({}, {'_id': 0}).to_list(100)
+        return disciplines
+    
+    @api_router.post('/disciplines')
+    async def create_discipline(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+        if current_user['role'] not in ['super_admin', 'admin']:
+            raise HTTPException(403, 'Admin only')
+        from uuid import uuid4
+        discipline = {
+            'id': str(uuid4()),
+            'code': data['code'],
+            'name': data['name'],
+            'description': data.get('description', ''),
+            'color': data.get('color', '#3B82F6'),
+            'is_active': True,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.disciplines.insert_one(discipline)
+        return {k: v for k, v in discipline.items() if k != '_id'}
+    
+    # --- BOOKING CODES (PRESTATIONS) ---
+    @api_router.get('/booking-codes')
+    async def get_booking_codes(current_user: dict = Depends(get_current_user)):
+        """Get all booking codes (prestations)"""
+        codes = await db.booking_codes.find({}, {'_id': 0}).to_list(100)
+        if not codes:
+            await seed_booking_codes(db)
+            codes = await db.booking_codes.find({}, {'_id': 0}).to_list(100)
+        return codes
+    
+    @api_router.post('/booking-codes')
+    async def create_booking_code(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+        if current_user['role'] not in ['super_admin', 'admin']:
+            raise HTTPException(403, 'Admin only')
+        from uuid import uuid4
+        code = {
+            'id': str(uuid4()),
+            'code': data['code'],
+            'name': data['name'],
+            'description': data.get('description', ''),
+            'is_billable': data.get('is_billable', False),
+            'category': data.get('category', 'other'),
+            'color': data.get('color', '#6B7280'),
+            'is_active': True,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.booking_codes.insert_one(code)
+        return {k: v for k, v in code.items() if k != '_id'}
+    
+    @api_router.put('/booking-codes/{code_id}')
+    async def update_booking_code(code_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+        if current_user['role'] not in ['super_admin', 'admin']:
+            raise HTTPException(403, 'Admin only')
+        update_data = {k: v for k, v in data.items() if v is not None}
+        update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
+        await db.booking_codes.update_one({'id': code_id}, {'$set': update_data})
+        return await db.booking_codes.find_one({'id': code_id}, {'_id': 0})
+    
+    # --- ACTIVITIES (TASKS) ---
+    @api_router.get('/activities')
+    async def get_activities(current_user: dict = Depends(get_current_user)):
+        """Get all activities/tasks"""
+        activities = await db.activities.find({}, {'_id': 0}).to_list(100)
+        if not activities:
+            await seed_activities(db)
+            activities = await db.activities.find({}, {'_id': 0}).to_list(100)
+        return activities
+    
+    @api_router.post('/activities')
+    async def create_activity(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+        if current_user['role'] not in ['super_admin', 'admin']:
+            raise HTTPException(403, 'Admin only')
+        from uuid import uuid4
+        activity = {
+            'id': str(uuid4()),
+            'code': data.get('code', data['name'][:10].upper()),
+            'name': data['name'],
+            'description': data.get('description', ''),
+            'is_active': True,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.activities.insert_one(activity)
+        return {k: v for k, v in activity.items() if k != '_id'}
+    
+    # --- PROJECT ASSIGNMENTS ---
+    @api_router.get('/project-assignments')
+    async def get_project_assignments(
+        project_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """Get project assignments (user-project-discipline-allocation)"""
+        query = {}
+        if project_id:
+            query['project_id'] = project_id
+        if user_id:
+            query['user_id'] = user_id
+        elif current_user['role'] == 'employee':
+            query['user_id'] = current_user['id']
+        
+        assignments = await db.project_assignments.find(query, {'_id': 0}).to_list(1000)
+        return assignments
+    
+    @api_router.get('/project-assignments/my-projects')
+    async def get_my_assigned_projects(current_user: dict = Depends(get_current_user)):
+        """Get projects where current user is assigned"""
+        # Admins see all projects
+        if current_user['role'] in ['super_admin', 'admin']:
+            projects = await db.projects.find({'status': {'$ne': 'archived'}}, {'_id': 0}).to_list(1000)
+            return projects
+        
+        # Get user's assignments
+        assignments = await db.project_assignments.find(
+            {'user_id': current_user['id'], 'is_active': True},
+            {'_id': 0}
+        ).to_list(100)
+        
+        project_ids = [a['project_id'] for a in assignments]
+        
+        if not project_ids:
+            return []
+        
+        projects = await db.projects.find(
+            {'id': {'$in': project_ids}, 'status': {'$ne': 'archived'}},
+            {'_id': 0}
+        ).to_list(1000)
+        
+        # Attach assignment info to each project
+        assignment_map = {a['project_id']: a for a in assignments}
+        for p in projects:
+            if p['id'] in assignment_map:
+                p['assignment'] = assignment_map[p['id']]
+        
+        return projects
+    
+    @api_router.post('/project-assignments')
+    async def create_project_assignment(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+        if current_user['role'] not in ['super_admin', 'admin', 'manager']:
+            raise HTTPException(403, 'Manager+ only')
+        from uuid import uuid4
+        assignment = {
+            'id': str(uuid4()),
+            'project_id': data['project_id'],
+            'user_id': data['user_id'],
+            'discipline_id': data.get('discipline_id'),
+            'allocation_percent': data.get('allocation_percent', 100),
+            'start_date': data.get('start_date'),
+            'end_date': data.get('end_date'),
+            'is_active': True,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'created_by': current_user['id']
+        }
+        await db.project_assignments.insert_one(assignment)
+        
+        # Update user's team association if needed
+        await db.users.update_one(
+            {'id': data['user_id']},
+            {'$addToSet': {'assigned_projects': data['project_id']}}
+        )
+        
+        return {k: v for k, v in assignment.items() if k != '_id'}
+    
+    @api_router.delete('/project-assignments/{assignment_id}')
+    async def delete_project_assignment(assignment_id: str, current_user: dict = Depends(get_current_user)):
+        if current_user['role'] not in ['super_admin', 'admin', 'manager']:
+            raise HTTPException(403, 'Manager+ only')
+        await db.project_assignments.delete_one({'id': assignment_id})
+        return {'message': 'Assignment deleted'}
+
+
+async def seed_disciplines(db):
+    """Seed default disciplines"""
+    disciplines = [
+        {'id': 'disc-bim', 'code': 'BIM', 'name': 'BIM', 'description': 'Building Information Modeling', 'color': '#3B82F6', 'is_active': True},
+        {'id': 'disc-calc', 'code': 'CALCUL', 'name': 'CALCUL', 'description': 'Calcul et ingénierie structure', 'color': '#EF4444', 'is_active': True},
+        {'id': 'disc-design', 'code': 'DESIGN', 'name': 'DESIGN', 'description': 'Conception et dessin', 'color': '#8B5CF6', 'is_active': True},
+        {'id': 'disc-install', 'code': 'INSTALL', 'name': 'INSTALLATION', 'description': 'Installation et mise en service', 'color': '#F59E0B', 'is_active': True},
+        {'id': 'disc-dir', 'code': 'DIR', 'name': 'DIRECTION', 'description': 'Direction et management', 'color': '#10B981', 'is_active': True},
+        {'id': 'disc-ei', 'code': 'E&I', 'name': 'E&I', 'description': 'Électricité et Instrumentation', 'color': '#EC4899', 'is_active': True},
+        {'id': 'disc-support', 'code': 'SUPPORT', 'name': 'SUPPORT', 'description': 'Support et administration', 'color': '#6B7280', 'is_active': True},
+    ]
+    for d in disciplines:
+        d['created_at'] = datetime.now(timezone.utc).isoformat()
+        existing = await db.disciplines.find_one({'code': d['code']})
+        if not existing:
+            await db.disciplines.insert_one(d)
+
+
+async def seed_booking_codes(db):
+    """Seed default booking codes (prestations)"""
+    booking_codes = [
+        # BILLABLE
+        {'id': 'bc-3dmodel', 'code': '3D-MODEL', 'name': '3D MODELLING', 'is_billable': True, 'category': 'production', 'color': '#3B82F6'},
+        {'id': 'bc-bimcoord', 'code': 'BIM-COORD', 'name': 'BIM COORDINATION (CLIENT)', 'is_billable': True, 'category': 'coordination', 'color': '#8B5CF6'},
+        {'id': 'bc-calc', 'code': 'CALC-ENG', 'name': 'CALCUL / ENGINEERING', 'is_billable': True, 'category': 'engineering', 'color': '#EF4444'},
+        {'id': 'bc-design', 'code': 'DESIGN', 'name': 'DESIGN / DRAWING', 'is_billable': True, 'category': 'production', 'color': '#10B981'},
+        {'id': 'bc-pm', 'code': 'PM-CLIENT', 'name': 'PROJECT MANAGEMENT (CLIENT)', 'is_billable': True, 'category': 'management', 'color': '#F59E0B'},
+        {'id': 'bc-meeting', 'code': 'CLIENT-MTG', 'name': 'CLIENT MEETING', 'is_billable': True, 'category': 'meeting', 'color': '#14B8A6'},
+        {'id': 'bc-site', 'code': 'SITE', 'name': 'SITE SUPPORT', 'is_billable': True, 'category': 'site', 'color': '#F97316'},
+        {'id': 'bc-assist', 'code': 'TECH-ASSIST', 'name': 'TECHNICAL ASSISTANCE', 'is_billable': True, 'category': 'support', 'color': '#06B6D4'},
+        # NON-BILLABLE
+        {'id': 'bc-internal', 'code': 'INT-MTG', 'name': 'INTERNAL MEETING', 'is_billable': False, 'category': 'internal', 'color': '#94A3B8'},
+        {'id': 'bc-mgmt', 'code': 'MGMT', 'name': 'MANAGEMENT', 'is_billable': False, 'category': 'internal', 'color': '#64748B'},
+        {'id': 'bc-training', 'code': 'TRAINING', 'name': 'FORMATION', 'is_billable': False, 'category': 'internal', 'color': '#A855F7'},
+        {'id': 'bc-admin', 'code': 'ADMIN', 'name': 'ADMIN / RH', 'is_billable': False, 'category': 'admin', 'color': '#78716C'},
+        {'id': 'bc-devtools', 'code': 'DEV-TOOLS', 'name': 'DEVELOPMENT TOOLS', 'is_billable': False, 'category': 'internal', 'color': '#0EA5E9'},
+        {'id': 'bc-quality', 'code': 'QUALITY', 'name': 'QUALITY / PROCESS', 'is_billable': False, 'category': 'internal', 'color': '#22C55E'},
+        {'id': 'bc-commercial', 'code': 'COMMERCIAL', 'name': 'COMMERCIAL / PRE-SALES', 'is_billable': False, 'category': 'commercial', 'color': '#EAB308'},
+    ]
+    for bc in booking_codes:
+        bc['is_active'] = True
+        bc['created_at'] = datetime.now(timezone.utc).isoformat()
+        existing = await db.booking_codes.find_one({'code': bc['code']})
+        if not existing:
+            await db.booking_codes.insert_one(bc)
+
+
+async def seed_activities(db):
+    """Seed default activities (tasks)"""
+    activities = [
+        {'id': 'act-plans', 'code': 'PLANS-UPD', 'name': 'Plans updates'},
+        {'id': 'act-clash', 'code': 'CLASH', 'name': 'Clash detection'},
+        {'id': 'act-coord-mo', 'code': 'COORD-MO', 'name': 'Coordination MO'},
+        {'id': 'act-coord-int', 'code': 'COORD-INT', 'name': 'Coordination interne'},
+        {'id': 'act-typemo', 'code': 'TYPE-MO', 'name': 'Type MO'},
+        {'id': 'act-review', 'code': 'TECH-REV', 'name': 'Technical review'},
+        {'id': 'act-deliv', 'code': 'DELIVERABLES', 'name': 'Deliverables preparation'},
+        {'id': 'act-model', 'code': 'MODEL-UPD', 'name': 'Model update'},
+        {'id': 'act-calcs', 'code': 'CALCS', 'name': 'Calculs et notes'},
+        {'id': 'act-meeting', 'code': 'MEETING', 'name': 'Réunion'},
+        {'id': 'act-admin', 'code': 'ADMIN', 'name': 'Administratif'},
+        {'id': 'act-other', 'code': 'OTHER', 'name': 'Autre'},
+    ]
+    for act in activities:
+        act['is_active'] = True
+        act['created_at'] = datetime.now(timezone.utc).isoformat()
+        existing = await db.activities.find_one({'code': act['code']})
+        if not existing:
+            await db.activities.insert_one(act)
+
 def add_project_routes(api_router, db, get_current_user):
     @api_router.get('/projects')
     async def get_projects(current_user: dict = Depends(get_current_user)):
