@@ -610,10 +610,12 @@ from server_routes import (
     add_planning_routes,
     add_presence_routes,
     add_team_routes,
-    add_employee_calendar_routes
+    add_employee_calendar_routes,
+    add_master_data_routes
 )
 
 # Add all routes to the API router
+add_master_data_routes(api_router, db, get_current_user)
 add_project_routes(api_router, db, get_current_user)
 add_time_entry_routes(api_router, db, get_current_user)
 add_dashboard_routes(api_router, db, get_current_user)
