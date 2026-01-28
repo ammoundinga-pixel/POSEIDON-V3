@@ -293,7 +293,7 @@ export default function DashboardPage() {
                       <CardTitle className="text-sm font-medium text-muted-foreground">Heures totales</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-4xl font-heading font-bold">{dashboard.total_hours.toFixed(1)}h</div>
+                      <div className="text-4xl font-heading font-bold">{safeToFixed(dashboard.total_hours)}h</div>
                     </CardContent>
                   </Card>
                 </div>
