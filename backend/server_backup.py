@@ -602,25 +602,7 @@ async def get_organization_hierarchy(
 # Continue with existing time entry and analytics routes...
 # (Keep all the existing time entry, project, dashboard, analytics code from before)
 
-# Import additional routes
-from server_routes import (
-    add_project_routes, 
-    add_time_entry_routes, 
-    add_dashboard_routes,
-    add_planning_routes,
-    add_presence_routes,
-    add_team_routes
-)
-
-# Add all routes to the API router
-add_project_routes(api_router, db, get_current_user)
-add_time_entry_routes(api_router, db, get_current_user)
-add_dashboard_routes(api_router, db, get_current_user)
-add_planning_routes(api_router, db, get_current_user)
-add_presence_routes(api_router, db, get_current_user)
-add_team_routes(api_router, db, get_current_user)
-
-# Include router and setup middleware
+# Include the router in the main app
 app.include_router(api_router)
 
 app.add_middleware(
@@ -631,13 +613,18 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 @app.on_event('shutdown')
 async def shutdown_db_client():
     client.close()
 
+# Initialize super admin on startup
 @app.on_event('startup')
 async def create_initial_super_admin():
     existing_admin = await db.users.find_one({'role': 'super_admin'})
