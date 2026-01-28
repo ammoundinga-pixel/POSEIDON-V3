@@ -609,7 +609,8 @@ from server_routes import (
     add_dashboard_routes,
     add_planning_routes,
     add_presence_routes,
-    add_team_routes
+    add_team_routes,
+    add_employee_calendar_routes
 )
 
 # Add all routes to the API router
@@ -619,6 +620,7 @@ add_dashboard_routes(api_router, db, get_current_user)
 add_planning_routes(api_router, db, get_current_user)
 add_presence_routes(api_router, db, get_current_user)
 add_team_routes(api_router, db, get_current_user)
+add_employee_calendar_routes(api_router, db, get_current_user)
 
 # Include router and setup middleware
 app.include_router(api_router)
