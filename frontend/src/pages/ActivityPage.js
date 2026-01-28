@@ -5,49 +5,64 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { Activity, MapPin, Home, Plane, Coffee, Calendar, Clock } from 'lucide-react';
+import { 
+  Activity, MapPin, Home, Plane, Coffee, Calendar, Clock, 
+  Search, Users, Briefcase, AlertCircle, Building2, Monitor
+} from 'lucide-react';
 import { formatDate } from '../lib/utils';
 
-const DAY_TYPE_ICONS = {
-  'présentiel': <Home className="h-4 w-4" />,
-  'télétravail': <Home className="h-4 w-4 text-blue-500" />,
-  'déplacement': <Plane className="h-4 w-4 text-purple-500" />,
-  'congé': <Coffee className="h-4 w-4 text-green-500" />,
-  'absence': <Calendar className="h-4 w-4 text-gray-500" />
+// Présence codes from Planning RH
+const PRESENCE_CODES = {
+  'M': { label: 'Monaco', color: 'bg-blue-500', textColor: 'text-white', icon: Building2 },
+  'N': { label: 'Nice', color: 'bg-emerald-500', textColor: 'text-white', icon: Building2 },
+  'P': { label: 'Paris', color: 'bg-violet-500', textColor: 'text-white', icon: Building2 },
+  'T': { label: 'Télétravail', color: 'bg-amber-400', textColor: 'text-black', icon: Monitor },
+  'C': { label: 'Client', color: 'bg-pink-500', textColor: 'text-white', icon: Users },
+  'D': { label: 'Déplacement', color: 'bg-teal-500', textColor: 'text-white', icon: Plane },
+  'E': { label: 'École', color: 'bg-indigo-500', textColor: 'text-white', icon: Calendar },
+  'A': { label: 'Congés', color: 'bg-red-500', textColor: 'text-white', icon: Coffee },
+  'F': { label: 'Férié', color: 'bg-slate-500', textColor: 'text-white', icon: Calendar },
+  'W': { label: 'Week-end', color: 'bg-slate-300', textColor: 'text-slate-700', icon: Calendar },
 };
 
+// Day types from time entry (Saisie du temps)
 const DAY_TYPE_LABELS = {
-  'présentiel': 'Au bureau',
+  'présentiel': 'Bureau',
   'télétravail': 'Télétravail',
   'déplacement': 'Déplacement',
   'congé': 'Congé',
   'absence': 'Absence'
 };
 
-const DAY_TYPE_COLORS = {
-  'présentiel': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  'télétravail': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
-  'déplacement': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  'congé': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  'absence': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
-};
-
 export default function ActivityPage() {
   const [users, setUsers] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [projects, setProjects] = useState({});
   const [timeEntries, setTimeEntries] = useState([]);
+  const [presenceData, setPresenceData] = useState({});
   const [loading, setLoading] = useState(true);
+  
+  // Filters
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
-  const [locationFilter, setLocationFilter] = useState('all');
+  const [presenceFilter, setPresenceFilter] = useState('all');
+  const [teamFilter, setTeamFilter] = useState('all');
+  const [projectFilter, setProjectFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchData();
   }, [dateFilter]);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      const [usersRes, projectsRes, entriesRes] = await Promise.all([
+      const dateObj = new Date(dateFilter);
+      const year = dateObj.getFullYear();
+      const month = dateObj.getMonth() + 1;
+
+      const [usersRes, projectsRes, entriesRes, teamsRes, calendarRes] = await Promise.all([
         axios.get('/users'),
         axios.get('/projects'),
         axios.get('/time-entries', {
@@ -55,7 +70,9 @@ export default function ActivityPage() {
             start_date: dateFilter + 'T00:00:00Z',
             end_date: dateFilter + 'T23:59:59Z'
           }
-        })
+        }),
+        axios.get('/teams').catch(() => ({ data: [] })),
+        axios.get('/employee-calendar/month', { params: { year, month } }).catch(() => ({ data: { calendar_data: {} } }))
       ]);
 
       const projectMap = {};
@@ -63,9 +80,20 @@ export default function ActivityPage() {
         projectMap[p.id] = p;
       });
 
+      // Build presence data by user for the selected date
+      const presenceByUser = {};
+      const calendarData = calendarRes.data?.calendar_data || {};
+      Object.entries(calendarData).forEach(([userId, dates]) => {
+        if (dates[dateFilter]) {
+          presenceByUser[userId] = dates[dateFilter];
+        }
+      });
+
       setUsers(usersRes.data);
       setProjects(projectMap);
       setTimeEntries(entriesRes.data);
+      setTeams(teamsRes.data || []);
+      setPresenceData(presenceByUser);
     } catch (error) {
       console.error('Failed to fetch data', error);
       toast.error('Erreur lors du chargement des données');
@@ -79,12 +107,11 @@ export default function ActivityPage() {
   };
 
   const getTotalHours = (entries) => {
-    return entries.reduce((sum, e) => sum + (e.status !== 'rejected' ? e.hours : 0), 0);
+    return entries.reduce((sum, e) => sum + (e.status !== 'rejected' ? (Number(e.hours) || 0) : 0), 0);
   };
 
-  const getDayType = (entries) => {
-    if (entries.length === 0) return null;
-    return entries[0].day_type;
+  const getUserPresence = (userId) => {
+    return presenceData[userId] || null;
   };
 
   const getRoleBadgeColor = (role) => {
@@ -105,14 +132,60 @@ export default function ActivityPage() {
     }
   };
 
+  // Apply all filters
   const filteredUsers = users.filter(user => {
-    const entries = getUserEntries(user.id);
-    const dayType = getDayType(entries);
-    
-    if (locationFilter === 'all') return true;
-    if (!dayType && locationFilter !== 'inactive') return false;
-    return dayType === locationFilter;
+    // Search filter
+    if (searchQuery) {
+      const fullName = `${user.first_name} ${user.last_name}`.toLowerCase();
+      if (!fullName.includes(searchQuery.toLowerCase())) return false;
+    }
+
+    // Presence filter
+    if (presenceFilter !== 'all') {
+      const presence = getUserPresence(user.id);
+      if (presenceFilter === 'none') {
+        if (presence) return false;
+      } else {
+        if (!presence || presence.code !== presenceFilter) return false;
+      }
+    }
+
+    // Team filter
+    if (teamFilter !== 'all') {
+      if (user.team_id !== teamFilter) return false;
+    }
+
+    // Project filter
+    if (projectFilter !== 'all') {
+      const entries = getUserEntries(user.id);
+      if (!entries.some(e => e.project_id === projectFilter)) return false;
+    }
+
+    return true;
   });
+
+  // Stats calculations
+  const getPresenceStats = () => {
+    const stats = { total: users.length, withPresence: 0, withHours: 0, byCode: {} };
+    
+    users.forEach(user => {
+      const presence = getUserPresence(user.id);
+      const entries = getUserEntries(user.id);
+      
+      if (presence) {
+        stats.withPresence++;
+        stats.byCode[presence.code] = (stats.byCode[presence.code] || 0) + 1;
+      }
+      
+      if (entries.length > 0 && getTotalHours(entries) > 0) {
+        stats.withHours++;
+      }
+    });
+    
+    return stats;
+  };
+
+  const stats = getPresenceStats();
 
   if (loading) {
     return (
@@ -127,41 +200,112 @@ export default function ActivityPage() {
   return (
     <DashboardLayout>
       <div data-testid="activity-page" className="space-y-6">
+        {/* Header */}
         <div>
           <h1 className="text-4xl font-heading font-bold tracking-tight mb-2">Activité quotidienne</h1>
-          <p className="text-muted-foreground">Vue en temps réel des activités de tous les collaborateurs</p>
+          <p className="text-muted-foreground">
+            Vue consolidée de la présence et des heures travaillées pour le{' '}
+            <span className="font-semibold text-foreground">{formatDate(dateFilter)}</span>
+          </p>
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+              <span>Présence = Planning RH</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+              <span>Heures = Saisie du temps</span>
+            </div>
+          </div>
         </div>
 
-        {/* Filters */}
+        {/* Filters Card */}
         <Card>
-          <CardHeader>
-            <CardTitle>Filtres</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Filtres</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Date</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Date */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Date</label>
                 <Input
                   type="date"
                   value={dateFilter}
                   onChange={(e) => setDateFilter(e.target.value)}
                   data-testid="date-filter"
+                  className="h-9"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Localisation</label>
-                <Select value={locationFilter} onValueChange={setLocationFilter}>
-                  <SelectTrigger data-testid="location-filter">
+              
+              {/* Search */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Recherche</label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Nom..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 h-9"
+                    data-testid="search-filter"
+                  />
+                </div>
+              </div>
+
+              {/* Presence Status */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Statut de présence</label>
+                <Select value={presenceFilter} onValueChange={setPresenceFilter}>
+                  <SelectTrigger data-testid="presence-filter" className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous</SelectItem>
-                    <SelectItem value="présentiel">Au bureau</SelectItem>
-                    <SelectItem value="télétravail">Télétravail</SelectItem>
-                    <SelectItem value="déplacement">Déplacement</SelectItem>
-                    <SelectItem value="congé">Congé</SelectItem>
-                    <SelectItem value="absence">Absence</SelectItem>
-                    <SelectItem value="inactive">Sans activité</SelectItem>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="none">Non renseigné</SelectItem>
+                    {Object.entries(PRESENCE_CODES).filter(([code]) => !['W', 'F'].includes(code)).map(([code, info]) => (
+                      <SelectItem key={code} value={code}>
+                        <span className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded ${info.color}`}></span>
+                          {info.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Team */}
+              {teams.length > 0 && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Équipe</label>
+                  <Select value={teamFilter} onValueChange={setTeamFilter}>
+                    <SelectTrigger data-testid="team-filter" className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Toutes les équipes</SelectItem>
+                      {teams.map(team => (
+                        <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Project */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Projet</label>
+                <Select value={projectFilter} onValueChange={setProjectFilter}>
+                  <SelectTrigger data-testid="project-filter" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les projets</SelectItem>
+                    {Object.values(projects).filter(p => p.status !== 'archived').map(project => (
+                      <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -169,121 +313,207 @@ export default function ActivityPage() {
           </CardContent>
         </Card>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {Object.entries(DAY_TYPE_LABELS).map(([type, label]) => {
-            const count = users.filter(u => getDayType(getUserEntries(u.id)) === type).length;
-            return (
-              <Card key={type}>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{label}</p>
-                      <p className="text-2xl font-heading font-bold">{count}</p>
-                    </div>
-                    <div className={`p-3 rounded-lg ${DAY_TYPE_COLORS[type]}`}>
-                      {DAY_TYPE_ICONS[type]}
-                    </div>
+        {/* Summary Stats - Two Blocks */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Block A: Présence (Planning RH) */}
+          <Card className="border-l-4 border-l-emerald-500">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-emerald-500" />
+                <CardTitle className="text-base">Présence</CardTitle>
+              </div>
+              <CardDescription className="text-xs">Source : Planning RH</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-950 rounded-lg">
+                  <div className="text-2xl font-bold text-emerald-600">{stats.withPresence}</div>
+                  <div className="text-xs text-muted-foreground">Renseigné</div>
+                </div>
+                <div className="text-center p-3 bg-amber-50 dark:bg-amber-950 rounded-lg">
+                  <div className="text-2xl font-bold text-amber-600">{stats.total - stats.withPresence}</div>
+                  <div className="text-xs text-muted-foreground">Non renseigné</div>
+                </div>
+                <div className="text-center p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                  <div className="text-2xl font-bold">{stats.total}</div>
+                  <div className="text-xs text-muted-foreground">Total</div>
+                </div>
+              </div>
+              {/* Mini legend */}
+              <div className="flex flex-wrap gap-2 mt-4">
+                {Object.entries(stats.byCode).map(([code, count]) => {
+                  const info = PRESENCE_CODES[code];
+                  if (!info) return null;
+                  return (
+                    <Badge key={code} variant="outline" className="text-xs">
+                      <span className={`w-2 h-2 rounded mr-1.5 ${info.color}`}></span>
+                      {info.label}: {count}
+                    </Badge>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Block B: Heures & Projets (Saisie du temps) */}
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-blue-500" />
+                <CardTitle className="text-base">Heures & Projets</CardTitle>
+              </div>
+              <CardDescription className="text-xs">Source : Saisie du temps</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">{stats.withHours}</div>
+                  <div className="text-xs text-muted-foreground">Avec heures</div>
+                </div>
+                <div className="text-center p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                  <div className="text-2xl font-bold">
+                    {timeEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0).toFixed(1)}h
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  <div className="text-xs text-muted-foreground">Heures totales</div>
+                </div>
+                <div className="text-center p-3 bg-violet-50 dark:bg-violet-950 rounded-lg">
+                  <div className="text-2xl font-bold text-violet-600">
+                    {[...new Set(timeEntries.map(e => e.project_id))].length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Projets actifs</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* User Activity List */}
-        <div className="space-y-4">
-          {filteredUsers.map((user) => {
-            const entries = getUserEntries(user.id);
-            const totalHours = getTotalHours(entries);
-            const dayType = getDayType(entries);
-            const projectsWorked = [...new Set(entries.map(e => e.project_id))];
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Détail par collaborateur
+            </CardTitle>
+            <CardDescription>{filteredUsers.length} collaborateur(s) affiché(s)</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {filteredUsers.map((user) => {
+                const entries = getUserEntries(user.id);
+                const totalHours = getTotalHours(entries);
+                const presence = getUserPresence(user.id);
+                const projectsWorked = [...new Set(entries.map(e => e.project_id))];
+                const presenceInfo = presence?.code ? PRESENCE_CODES[presence.code] : null;
 
-            return (
-              <Card key={user.id} className="hover:shadow-lg transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                    {/* User Info */}
-                    <div className="md:col-span-3 flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-accent to-accent/80 flex items-center justify-center text-white font-semibold text-lg">
-                        {user.first_name[0]}{user.last_name[0]}
+                return (
+                  <div key={user.id} className="p-4 hover:bg-muted/30 transition-colors">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                      {/* User Info */}
+                      <div className="lg:col-span-3 flex items-center gap-3">
+                        <div className="h-11 w-11 rounded-full bg-gradient-to-br from-accent to-accent/80 flex items-center justify-center text-white font-semibold">
+                          {user.first_name[0]}{user.last_name[0]}
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm">{user.first_name} {user.last_name}</div>
+                          <Badge className={`${getRoleBadgeColor(user.role)} text-[10px]`} variant="outline">
+                            {getRoleLabel(user.role)}
+                          </Badge>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-medium">{user.first_name} {user.last_name}</div>
-                        <Badge className={getRoleBadgeColor(user.role)} variant="outline">
-                          {getRoleLabel(user.role)}
-                        </Badge>
-                      </div>
-                    </div>
 
-                    {/* Location Status */}
-                    <div className="md:col-span-2 flex items-center">
-                      {dayType ? (
-                        <div className="flex items-center gap-2">
-                          <div className={`p-2 rounded-lg ${DAY_TYPE_COLORS[dayType]}`}>
-                            {DAY_TYPE_ICONS[dayType]}
+                      {/* Block A: Présence (Planning RH) */}
+                      <div className="lg:col-span-3">
+                        <div className="flex items-center gap-1 mb-1">
+                          <MapPin className="h-3 w-3 text-emerald-500" />
+                          <span className="text-[10px] font-medium text-emerald-600 uppercase">Présence RH</span>
+                        </div>
+                        {presenceInfo ? (
+                          <div className="flex items-center gap-2">
+                            <Badge className={`${presenceInfo.color} ${presenceInfo.textColor} font-bold`}>
+                              {presence.code}
+                            </Badge>
+                            <span className="text-sm">{presenceInfo.label}</span>
+                            {presence.half_day && (
+                              <Badge variant="outline" className="text-[10px]">½ journée</Badge>
+                            )}
                           </div>
-                          <div>
-                            <p className="text-sm font-medium">{DAY_TYPE_LABELS[dayType]}</p>
-                            <p className="text-xs text-muted-foreground">{formatDate(dateFilter)}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-muted-foreground italic">Aucune activité</div>
-                      )}
-                    </div>
-
-                    {/* Hours */}
-                    <div className="md:col-span-2 flex items-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Heures travaillées</p>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-lg font-mono font-bold">{totalHours.toFixed(1)}h</span>
-                          <span className="text-xs text-muted-foreground">/ {user.capacity_hours_per_day}h</span>
-                        </div>
+                        ) : (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Non renseigné
+                          </Badge>
+                        )}
                       </div>
-                    </div>
 
-                    {/* Projects */}
-                    <div className="md:col-span-5">
-                      <p className="text-sm text-muted-foreground mb-2">Projets ({projectsWorked.length})</p>
-                      {entries.length > 0 ? (
-                        <div className="space-y-2">
-                          {projectsWorked.map(projectId => {
-                            const projectEntries = entries.filter(e => e.project_id === projectId);
-                            const projectHours = getTotalHours(projectEntries);
-                            const project = projects[projectId];
-                            
-                            return (
-                              <div key={projectId} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium">{project?.name || 'Projet inconnu'}</div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {projectEntries.map(e => e.service_type).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
-                                  </div>
-                                </div>
-                                <div className="text-sm font-mono font-medium">{projectHours.toFixed(1)}h</div>
-                              </div>
-                            );
-                          })}
+                      {/* Block B: Heures (Saisie du temps) */}
+                      <div className="lg:col-span-2">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Clock className="h-3 w-3 text-blue-500" />
+                          <span className="text-[10px] font-medium text-blue-600 uppercase">Heures</span>
                         </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground italic">Aucun projet</p>
-                      )}
+                        {entries.length > 0 ? (
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-xl font-bold font-mono">{totalHours.toFixed(1)}</span>
+                            <span className="text-sm text-muted-foreground">/ {user.capacity_hours_per_day || 7}h</span>
+                          </div>
+                        ) : (
+                          <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
+                            Aucune saisie
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Block B: Projets (Saisie du temps) */}
+                      <div className="lg:col-span-4">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Briefcase className="h-3 w-3 text-blue-500" />
+                          <span className="text-[10px] font-medium text-blue-600 uppercase">
+                            Projets ({projectsWorked.length})
+                          </span>
+                        </div>
+                        {projectsWorked.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {projectsWorked.slice(0, 3).map(projectId => {
+                              const projectEntries = entries.filter(e => e.project_id === projectId);
+                              const projectHours = getTotalHours(projectEntries);
+                              const project = projects[projectId];
+                              
+                              return (
+                                <Badge 
+                                  key={projectId} 
+                                  variant="secondary"
+                                  className="text-xs font-normal"
+                                  title={project?.name || 'Projet inconnu'}
+                                >
+                                  {(project?.name || 'Projet').substring(0, 15)}
+                                  {(project?.name || '').length > 15 && '...'}
+                                  <span className="ml-1 font-mono font-semibold">{projectHours.toFixed(1)}h</span>
+                                </Badge>
+                              );
+                            })}
+                            {projectsWorked.length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{projectsWorked.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">-</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {filteredUsers.length === 0 && (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Activity className="h-16 w-16 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">Aucune activité</p>
+              <p className="text-lg font-medium">Aucun résultat</p>
               <p className="text-sm text-muted-foreground">Aucun collaborateur ne correspond aux filtres sélectionnés</p>
             </CardContent>
           </Card>
