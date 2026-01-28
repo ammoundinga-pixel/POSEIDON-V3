@@ -5,6 +5,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
 import { 
@@ -18,7 +23,12 @@ import {
   ChevronRight,
   AlertCircle,
   Shield,
-  UserCheck
+  UserCheck,
+  Plus,
+  Edit,
+  Trash2,
+  X,
+  Check
 } from 'lucide-react';
 
 const getRoleBadge = (role) => {
@@ -97,7 +107,6 @@ const HierarchyChain = ({ currentUser, users }) => {
     const chain = [currentUser];
     let current = currentUser;
 
-    // Build upward chain
     while (current.manager_id) {
       const manager = users.find(u => u.id === current.manager_id);
       if (manager && !chain.find(c => c.id === manager.id)) {
@@ -166,7 +175,7 @@ const HierarchyChain = ({ currentUser, users }) => {
   );
 };
 
-const TeamCard = ({ team, users, isManager = false }) => {
+const TeamCard = ({ team, users, isManager = false, onEdit, onDelete, canManage }) => {
   const teamMembers = users.filter(u => team.member_ids?.includes(u.id));
   const manager = users.find(u => u.id === team.manager_id);
 
@@ -178,11 +187,23 @@ const TeamCard = ({ team, users, isManager = false }) => {
             <Building className="h-5 w-5" />
             {team.name}
           </CardTitle>
-          {isManager && (
-            <Badge className="bg-green-100 text-green-700">
-              Vous gérez cette équipe
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {isManager && (
+              <Badge className="bg-green-100 text-green-700">
+                Vous gérez
+              </Badge>
+            )}
+            {canManage && (
+              <div className="flex gap-1">
+                <Button variant="ghost" size="icon" onClick={() => onEdit(team)}>
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => onDelete(team.id)}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
         {team.description && (
           <CardDescription>{team.description}</CardDescription>
@@ -190,9 +211,9 @@ const TeamCard = ({ team, users, isManager = false }) => {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Manager */}
-        {manager && (
-          <div>
-            <Label className="text-sm font-medium text-muted-foreground">Manager de l'équipe</Label>
+        <div>
+          <Label className="text-sm font-medium text-muted-foreground">Manager de l'équipe</Label>
+          {manager ? (
             <div className="mt-2 flex items-center gap-3 p-2 bg-secondary rounded-lg">
               <UserCheck className="h-5 w-5 text-accent" />
               <div>
@@ -200,8 +221,13 @@ const TeamCard = ({ team, users, isManager = false }) => {
                 <p className="text-xs text-muted-foreground">{manager.email}</p>
               </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg flex items-center gap-2 text-amber-700">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">Aucun manager assigné</span>
+            </div>
+          )}
+        </div>
 
         {/* Members */}
         <div>
@@ -210,7 +236,7 @@ const TeamCard = ({ team, users, isManager = false }) => {
           </Label>
           <div className="mt-2 space-y-1">
             {teamMembers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun membre</p>
+              <p className="text-sm text-muted-foreground italic">Aucun membre</p>
             ) : (
               teamMembers.map(member => (
                 <div key={member.id} className="flex items-center gap-2 p-2 hover:bg-secondary rounded">
@@ -244,14 +270,26 @@ const NoManagerAssigned = () => {
             <p className="text-sm text-yellow-800 dark:text-yellow-200 mt-1">
               Vous n'avez pas encore de manager direct assigné. Contactez votre administrateur pour être rattaché à une équipe et un manager.
             </p>
-            <div className="mt-4">
-              <Button variant="outline" size="sm" className="border-yellow-600 text-yellow-700 hover:bg-yellow-100">
-                <Mail className="mr-2 h-4 w-4" />
-                Contacter l'administrateur
-              </Button>
-            </div>
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const EmptyTeamsState = ({ onCreateTeam }) => {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="py-12 text-center">
+        <Building className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Aucune équipe créée</h3>
+        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+          Les équipes permettent d'organiser vos collaborateurs et de définir les relations hiérarchiques pour la validation des heures.
+        </p>
+        <Button onClick={onCreateTeam} data-testid="create-team-cta">
+          <Plus className="mr-2 h-4 w-4" />
+          Créer une équipe
+        </Button>
       </CardContent>
     </Card>
   );
@@ -262,6 +300,17 @@ export default function OrganizationPage() {
   const [users, setUsers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Team dialog state
+  const [teamDialogOpen, setTeamDialogOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState(null);
+  const [teamForm, setTeamForm] = useState({
+    name: '',
+    description: '',
+    manager_id: '',
+    member_ids: []
+  });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -272,7 +321,7 @@ export default function OrganizationPage() {
     try {
       const [usersRes, teamsRes] = await Promise.all([
         axios.get('/users'),
-        axios.get('/teams').catch(() => ({ data: [] })) // Teams might not exist yet
+        axios.get('/teams').catch(() => ({ data: [] }))
       ]);
       setUsers(usersRes.data);
       setTeams(teamsRes.data);
@@ -284,28 +333,137 @@ export default function OrganizationPage() {
     }
   };
 
+  // Get eligible managers (manager or admin roles)
+  const getEligibleManagers = () => {
+    return users.filter(u => ['manager', 'admin', 'super_admin'].includes(u.role));
+  };
+
+  // Get eligible members (anyone except super_admin)
+  const getEligibleMembers = () => {
+    return users.filter(u => u.role !== 'super_admin');
+  };
+
+  // Open create dialog
+  const handleOpenCreateDialog = () => {
+    setEditingTeam(null);
+    setTeamForm({
+      name: '',
+      description: '',
+      manager_id: '',
+      member_ids: []
+    });
+    setTeamDialogOpen(true);
+  };
+
+  // Open edit dialog
+  const handleEditTeam = (team) => {
+    setEditingTeam(team);
+    setTeamForm({
+      name: team.name || '',
+      description: team.description || '',
+      manager_id: team.manager_id || '',
+      member_ids: team.member_ids || []
+    });
+    setTeamDialogOpen(true);
+  };
+
+  // Save team
+  const handleSaveTeam = async () => {
+    // Validation
+    if (!teamForm.name.trim()) {
+      toast.error('Le nom de l\'équipe est obligatoire');
+      return;
+    }
+    if (!teamForm.manager_id) {
+      toast.error('Un manager doit être assigné à l\'équipe');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const teamData = {
+        name: teamForm.name.trim(),
+        description: teamForm.description.trim(),
+        manager_id: teamForm.manager_id,
+        member_ids: teamForm.member_ids
+      };
+
+      let savedTeam;
+      if (editingTeam) {
+        // Update existing team
+        const response = await axios.put(`/teams/${editingTeam.id}`, teamData);
+        savedTeam = response.data;
+        toast.success('Équipe modifiée avec succès');
+      } else {
+        // Create new team
+        const response = await axios.post('/teams', teamData);
+        savedTeam = response.data;
+        toast.success('Équipe créée avec succès');
+      }
+
+      // Update member's team_id and manager_id
+      const updatePromises = teamForm.member_ids.map(memberId => 
+        axios.put(`/users/${memberId}`, {
+          team_id: savedTeam.id,
+          manager_id: teamForm.manager_id
+        }).catch(err => {
+          console.error(`Failed to update user ${memberId}`, err);
+        })
+      );
+      await Promise.all(updatePromises);
+
+      setTeamDialogOpen(false);
+      fetchData(); // Refresh data
+    } catch (error) {
+      console.error('Failed to save team', error);
+      toast.error(error.response?.data?.detail || 'Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete team
+  const handleDeleteTeam = async (teamId) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette équipe ? Les membres ne seront pas supprimés.')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/teams/${teamId}`);
+      toast.success('Équipe supprimée');
+      fetchData();
+    } catch (error) {
+      console.error('Failed to delete team', error);
+      toast.error('Erreur lors de la suppression');
+    }
+  };
+
+  // Toggle member selection
+  const toggleMember = (userId) => {
+    setTeamForm(prev => ({
+      ...prev,
+      member_ids: prev.member_ids.includes(userId)
+        ? prev.member_ids.filter(id => id !== userId)
+        : [...prev.member_ids, userId]
+    }));
+  };
+
   // Find current user's manager
   const getMyManager = () => {
-    // Direct manager
     if (user.manager_id) {
       return users.find(u => u.id === user.manager_id);
     }
-    
-    // Manager from team
     const myTeam = teams.find(t => t.member_ids?.includes(user.id));
     if (myTeam?.manager_id) {
       return users.find(u => u.id === myTeam.manager_id);
     }
-    
     return null;
   };
 
-  // Find current user's team
   const getMyTeam = () => {
-    return teams.find(t => t.member_ids?.includes(user.id));
+    return teams.find(t => t.member_ids?.includes(user.id) || t.manager_id === user.id);
   };
 
-  // Check if user manages any team
   const getTeamsIManage = () => {
     return teams.filter(t => t.manager_id === user.id);
   };
@@ -313,6 +471,7 @@ export default function OrganizationPage() {
   const myManager = getMyManager();
   const myTeam = getMyTeam();
   const teamsIManage = getTeamsIManage();
+  const canManageTeams = isAdmin || isSuperAdmin;
 
   if (loading) {
     return (
@@ -328,52 +487,68 @@ export default function OrganizationPage() {
   if (isAdmin || isSuperAdmin) {
     return (
       <DashboardLayout>
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-4xl font-heading font-bold tracking-tight mb-2">Organigramme</h1>
-            <p className="text-muted-foreground">
-              Structure organisationnelle et équipes
-            </p>
+        <div data-testid="organization-page" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-heading font-bold tracking-tight mb-2">Organigramme</h1>
+              <p className="text-muted-foreground">
+                Structure organisationnelle et équipes
+              </p>
+            </div>
+            <Button onClick={handleOpenCreateDialog} data-testid="create-team-btn">
+              <Plus className="mr-2 h-4 w-4" />
+              Créer une équipe
+            </Button>
           </div>
 
-          <Tabs defaultValue="overview">
+          <Tabs defaultValue="teams">
             <TabsList>
               <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
-              <TabsTrigger value="teams">Équipes ({teams.length})</TabsTrigger>
+              <TabsTrigger value="teams">
+                Équipes ({teams.length})
+              </TabsTrigger>
               <TabsTrigger value="hierarchy">Hiérarchie</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6 mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Utilisateurs</CardTitle>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground">Utilisateurs</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">{users.length}</div>
-                    <p className="text-sm text-muted-foreground mt-1">Total</p>
                   </CardContent>
                 </Card>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Équipes</CardTitle>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground">Équipes</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">{teams.length}</div>
-                    <p className="text-sm text-muted-foreground mt-1">Actives</p>
                   </CardContent>
                 </Card>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Managers</CardTitle>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground">Managers</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">
-                      {users.filter(u => u.role === 'manager' || u.role === 'admin').length}
+                      {users.filter(u => u.role === 'manager').length}
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">Total</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground">Sans équipe</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-amber-600">
+                      {users.filter(u => !u.team_id && u.role === 'employee').length}
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -390,14 +565,20 @@ export default function OrganizationPage() {
                         <div key={role}>
                           <div className="flex items-center justify-between mb-2">
                             {getRoleBadge(role)}
-                            <span className="text-sm text-muted-foreground">{roleUsers.length} personne(s)</span>
+                            <span className="text-sm text-muted-foreground">{roleUsers.length}</span>
                           </div>
-                          <div className="space-y-1">
-                            {roleUsers.map(u => (
-                              <div key={u.id} className="text-sm p-2 hover:bg-secondary rounded">
-                                {u.first_name} {u.last_name}
-                              </div>
-                            ))}
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {roleUsers.map(u => {
+                              const userTeam = teams.find(t => t.member_ids?.includes(u.id) || t.manager_id === u.id);
+                              return (
+                                <div key={u.id} className="text-sm p-2 bg-secondary rounded flex items-center justify-between">
+                                  <span>{u.first_name} {u.last_name}</span>
+                                  {userTeam && (
+                                    <Badge variant="outline" className="text-xs">{userTeam.name}</Badge>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -409,19 +590,18 @@ export default function OrganizationPage() {
 
             <TabsContent value="teams" className="space-y-6 mt-6">
               {teams.length === 0 ? (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <Building className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">Aucune équipe créée</p>
-                    <Button className="mt-4">
-                      Créer une équipe
-                    </Button>
-                  </CardContent>
-                </Card>
+                <EmptyTeamsState onCreateTeam={handleOpenCreateDialog} />
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {teams.map(team => (
-                    <TeamCard key={team.id} team={team} users={users} />
+                    <TeamCard 
+                      key={team.id} 
+                      team={team} 
+                      users={users}
+                      canManage={canManageTeams}
+                      onEdit={handleEditTeam}
+                      onDelete={handleDeleteTeam}
+                    />
                   ))}
                 </div>
               )}
@@ -447,7 +627,6 @@ export default function OrganizationPage() {
                           </div>
                         </div>
                         
-                        {/* Show their direct reports */}
                         {users.filter(u => u.manager_id === admin.id).length > 0 && (
                           <div className="ml-8 mt-2 space-y-2 border-l-2 border-accent pl-4">
                             {users.filter(u => u.manager_id === admin.id).map(report => (
@@ -466,6 +645,128 @@ export default function OrganizationPage() {
               </Card>
             </TabsContent>
           </Tabs>
+
+          {/* Create/Edit Team Dialog */}
+          <Dialog open={teamDialogOpen} onOpenChange={setTeamDialogOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingTeam ? 'Modifier l\'équipe' : 'Créer une équipe'}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingTeam 
+                    ? 'Modifiez les informations de l\'équipe'
+                    : 'Créez une nouvelle équipe avec un manager et des membres'
+                  }
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
+                {/* Team Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="team-name">
+                    Nom de l'équipe <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="team-name"
+                    placeholder="Ex: Équipe Développement"
+                    value={teamForm.name}
+                    onChange={(e) => setTeamForm(prev => ({ ...prev, name: e.target.value }))}
+                    data-testid="team-name-input"
+                  />
+                </div>
+
+                {/* Description */}
+                <div className="space-y-2">
+                  <Label htmlFor="team-description">Description</Label>
+                  <Textarea
+                    id="team-description"
+                    placeholder="Description de l'équipe (optionnel)"
+                    value={teamForm.description}
+                    onChange={(e) => setTeamForm(prev => ({ ...prev, description: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
+
+                {/* Manager Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="team-manager">
+                    Manager <span className="text-destructive">*</span>
+                  </Label>
+                  <Select 
+                    value={teamForm.manager_id} 
+                    onValueChange={(value) => setTeamForm(prev => ({ ...prev, manager_id: value }))}
+                  >
+                    <SelectTrigger id="team-manager" data-testid="team-manager-select">
+                      <SelectValue placeholder="Sélectionner un manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getEligibleManagers().map(manager => (
+                        <SelectItem key={manager.id} value={manager.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{manager.first_name} {manager.last_name}</span>
+                            <Badge variant="outline" className="text-xs ml-2">
+                              {manager.role === 'super_admin' ? 'Super Admin' : 
+                               manager.role === 'admin' ? 'Admin' : 'Manager'}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Seuls les utilisateurs avec le rôle Manager, Admin ou Super Admin peuvent gérer une équipe
+                  </p>
+                </div>
+
+                {/* Members Selection */}
+                <div className="space-y-2">
+                  <Label>Membres ({teamForm.member_ids.length} sélectionné(s))</Label>
+                  <div className="border rounded-lg max-h-48 overflow-y-auto">
+                    {getEligibleMembers().length === 0 ? (
+                      <p className="p-3 text-sm text-muted-foreground">Aucun membre disponible</p>
+                    ) : (
+                      getEligibleMembers()
+                        .filter(u => u.id !== teamForm.manager_id) // Exclude manager from members
+                        .map(member => {
+                          const isSelected = teamForm.member_ids.includes(member.id);
+                          return (
+                            <div
+                              key={member.id}
+                              className={`flex items-center gap-3 p-2 cursor-pointer hover:bg-secondary transition-colors ${
+                                isSelected ? 'bg-accent/10' : ''
+                              }`}
+                              onClick={() => toggleMember(member.id)}
+                            >
+                              <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                                isSelected ? 'bg-accent border-accent' : 'border-border'
+                              }`}>
+                                {isSelected && <Check className="h-3 w-3 text-white" />}
+                              </div>
+                              <span className="flex-1 text-sm">{member.first_name} {member.last_name}</span>
+                              {getRoleBadge(member.role)}
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setTeamDialogOpen(false)}>
+                  Annuler
+                </Button>
+                <Button 
+                  onClick={handleSaveTeam} 
+                  disabled={saving || !teamForm.name.trim() || !teamForm.manager_id}
+                  data-testid="save-team-btn"
+                >
+                  {saving ? 'Enregistrement...' : (editingTeam ? 'Enregistrer' : 'Créer l\'équipe')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </DashboardLayout>
     );
@@ -474,7 +775,7 @@ export default function OrganizationPage() {
   // Employee View - "Mon Organisation"
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div data-testid="organization-page" className="space-y-6">
         <div>
           <h1 className="text-4xl font-heading font-bold tracking-tight mb-2">Mon organisation</h1>
           <p className="text-muted-foreground">
@@ -483,7 +784,6 @@ export default function OrganizationPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* My Manager */}
           {myManager ? (
             <UserCard 
               user={myManager} 
@@ -494,16 +794,13 @@ export default function OrganizationPage() {
             <NoManagerAssigned />
           )}
 
-          {/* My Hierarchy */}
           <HierarchyChain currentUser={user} users={users} />
         </div>
 
-        {/* My Team */}
         {myTeam && (
-          <TeamCard team={myTeam} users={users} />
+          <TeamCard team={myTeam} users={users} isManager={myTeam.manager_id === user.id} />
         )}
 
-        {/* Teams I Manage (if manager) */}
         {teamsIManage.length > 0 && (
           <div className="space-y-4">
             <h2 className="text-2xl font-semibold">Équipes que je gère</h2>
@@ -515,8 +812,7 @@ export default function OrganizationPage() {
           </div>
         )}
 
-        {/* No team assigned */}
-        {!myTeam && myManager && (
+        {!myTeam && !teamsIManage.length && myManager && (
           <Card>
             <CardContent className="py-8 text-center">
               <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
