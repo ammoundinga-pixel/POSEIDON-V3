@@ -548,6 +548,123 @@ def add_time_entry_routes(api_router, db, get_current_user):
         
         logs = await db.audit_log.find(query, {'_id': 0}).sort('performed_at', -1).limit(limit).to_list(limit)
         return logs
+    
+    @api_router.post('/time-entries/bulk')
+    async def bulk_save_time_entries(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+        """Bulk save/update time entries with new APOLLON structure"""
+        from uuid import uuid4
+        
+        entries_data = data.get('entries', [])
+        saved_entries = []
+        
+        for entry_data in entries_data:
+            date_str = entry_data.get('date', '')
+            if isinstance(date_str, str):
+                date_normalized = date_str.split('T')[0]
+            else:
+                date_normalized = date_str
+            
+            # Check if entry already exists
+            existing = None
+            if entry_data.get('id'):
+                existing = await db.time_entries.find_one({'id': entry_data['id']})
+            
+            if not existing:
+                # Check for duplicate by unique key
+                existing = await db.time_entries.find_one({
+                    'user_id': current_user['id'],
+                    'project_id': entry_data['project_id'],
+                    'discipline_id': entry_data.get('discipline_id'),
+                    'booking_code_id': entry_data.get('booking_code_id'),
+                    'activity_id': entry_data.get('activity_id'),
+                    'date': {'$regex': f'^{date_normalized}'}
+                })
+            
+            # Get booking code for is_billable
+            booking_code = None
+            if entry_data.get('booking_code_id'):
+                booking_code = await db.booking_codes.find_one({'id': entry_data['booking_code_id']})
+            
+            is_billable = booking_code.get('is_billable', False) if booking_code else entry_data.get('is_billable', False)
+            
+            if existing and existing.get('status') not in ['validated']:
+                # Update existing entry
+                update_data = {
+                    'hours': float(entry_data.get('hours', 0)),
+                    'discipline_id': entry_data.get('discipline_id'),
+                    'booking_code_id': entry_data.get('booking_code_id'),
+                    'activity_id': entry_data.get('activity_id'),
+                    'is_billable': is_billable,
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                }
+                
+                # Also update legacy fields for compatibility
+                if entry_data.get('discipline_id'):
+                    disc = await db.disciplines.find_one({'id': entry_data['discipline_id']})
+                    if disc:
+                        update_data['discipline'] = disc.get('code', disc.get('name'))
+                
+                if booking_code:
+                    update_data['service_type'] = booking_code.get('name')
+                
+                if entry_data.get('activity_id'):
+                    act = await db.activities.find_one({'id': entry_data['activity_id']})
+                    if act:
+                        update_data['activity'] = act.get('name')
+                
+                await db.time_entries.update_one({'id': existing['id']}, {'$set': update_data})
+                updated = await db.time_entries.find_one({'id': existing['id']}, {'_id': 0})
+                saved_entries.append(updated)
+            else:
+                # Create new entry
+                date_obj = datetime.fromisoformat(date_normalized) if 'T' not in date_normalized else datetime.fromisoformat(date_normalized.replace('Z', '+00:00'))
+                week_number = date_obj.isocalendar()[1]
+                
+                # Get names for legacy fields
+                discipline_name = ''
+                if entry_data.get('discipline_id'):
+                    disc = await db.disciplines.find_one({'id': entry_data['discipline_id']})
+                    if disc:
+                        discipline_name = disc.get('code', disc.get('name'))
+                
+                service_type_name = ''
+                if booking_code:
+                    service_type_name = booking_code.get('name')
+                
+                activity_name = ''
+                if entry_data.get('activity_id'):
+                    act = await db.activities.find_one({'id': entry_data['activity_id']})
+                    if act:
+                        activity_name = act.get('name')
+                
+                entry = {
+                    'id': str(uuid4()),
+                    'user_id': current_user['id'],
+                    'project_id': entry_data['project_id'],
+                    'date': date_normalized,
+                    # New fields (APOLLON structure)
+                    'discipline_id': entry_data.get('discipline_id'),
+                    'booking_code_id': entry_data.get('booking_code_id'),
+                    'activity_id': entry_data.get('activity_id'),
+                    'is_billable': is_billable,
+                    # Legacy fields for backward compatibility
+                    'discipline': discipline_name,
+                    'activity': activity_name,
+                    'service_type': service_type_name,
+                    # Common fields
+                    'hours': float(entry_data.get('hours', 0)),
+                    'task_description': entry_data.get('task_description', ''),
+                    'day_type': entry_data.get('day_type', 'présentiel'),
+                    'status': entry_data.get('status', 'draft'),
+                    'week_number': week_number,
+                    'year': date_obj.year,
+                    'created_at': datetime.now(timezone.utc).isoformat(),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                }
+                await db.time_entries.insert_one(entry)
+                saved_entries.append({k: v for k, v in entry.items() if k != '_id'})
+        
+        return {'saved': len(saved_entries), 'entries': saved_entries}
 
     @api_router.put('/time-entries/{entry_id}')
     async def update_time_entry(entry_id: str, entry_data: dict, current_user: dict = Depends(get_current_user)):
