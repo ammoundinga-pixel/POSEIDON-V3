@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import { 
@@ -22,230 +22,167 @@ import {
   XCircle,
   Edit3,
   AlertCircle,
-  History,
-  Eye,
-  Lock,
-  MoreHorizontal,
-  Copy,
+  Plus,
   Trash2,
-  Undo2,
+  Lock,
+  DollarSign,
+  DollarSignIcon,
+  Briefcase,
+  Users,
   FileText,
-  Calendar,
-  User,
-  ArrowRight
+  Info,
+  Save
 } from 'lucide-react';
-import { DISCIPLINES, ACTIVITIES, SERVICE_TYPES, formatDate } from '../lib/utils';
+import { formatDate } from '../lib/utils';
 
-// Status configuration with business rules
-const getStatusConfig = (status, lastEditedBy = null) => {
-  const isAdminModified = lastEditedBy !== null && lastEditedBy !== undefined;
+// Billable Badge Component
+const BillableBadge = ({ isBillable, size = 'default' }) => {
+  const sizeClasses = size === 'sm' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-1';
   
-  if (isAdminModified) {
-    return {
-      icon: Edit3,
-      label: 'Modifiée par Admin',
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100',
-      variant: 'secondary',
-      locked: true
-    };
-  }
-  
-  const configs = {
-    draft: {
-      icon: Clock,
-      label: 'Brouillon',
-      color: 'text-gray-500',
-      bgColor: 'bg-gray-100',
-      variant: 'secondary',
-      locked: false
-    },
-    submitted: {
-      icon: AlertCircle,
-      label: 'En attente',
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-100',
-      variant: 'default',
-      locked: false
-    },
-    validated: {
-      icon: CheckCircle2,
-      label: 'Validée',
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
-      variant: 'outline',
-      locked: true
-    },
-    rejected: {
-      icon: XCircle,
-      label: 'Rejetée',
-      color: 'text-red-600',
-      bgColor: 'bg-red-100',
-      variant: 'destructive',
-      locked: false
-    }
-  };
-  
-  return configs[status] || configs.draft;
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge 
+            className={`${sizeClasses} ${
+              isBillable 
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' 
+                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+            }`}
+          >
+            {isBillable ? '€ Facturable' : 'Non facturable'}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="max-w-[200px] text-xs">
+            {isBillable 
+              ? 'Ces heures seront facturées au client' 
+              : 'Heures internes (formation, admin, management...)'}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 };
 
 // Status Badge Component
-const StatusBadge = ({ status, lastEditedBy, size = 'default' }) => {
-  const config = getStatusConfig(status, lastEditedBy);
+const StatusBadge = ({ status }) => {
+  const configs = {
+    draft: { icon: Clock, label: 'Brouillon', className: 'bg-gray-100 text-gray-600' },
+    submitted: { icon: AlertCircle, label: 'En attente', className: 'bg-yellow-100 text-yellow-700' },
+    validated: { icon: CheckCircle2, label: 'Validée', className: 'bg-emerald-100 text-emerald-700' },
+    rejected: { icon: XCircle, label: 'Rejetée', className: 'bg-red-100 text-red-700' }
+  };
+  const config = configs[status] || configs.draft;
   const Icon = config.icon;
   
-  const sizeClasses = {
-    sm: 'text-xs px-2 py-0.5',
-    default: 'text-sm px-3 py-1'
-  };
-  
   return (
-    <Badge variant={config.variant} className={`${config.bgColor} ${config.color} ${sizeClasses[size]} flex items-center gap-1`}>
+    <Badge className={`${config.className} text-xs flex items-center gap-1`}>
       <Icon className="h-3 w-3" />
       {config.label}
     </Badge>
   );
 };
 
-// Timeline Event for History
-const TimelineEvent = ({ event, users }) => {
-  const getUserName = (userId) => {
-    const user = users.find(u => u.id === userId);
-    return user ? `${user.first_name} ${user.last_name}` : 'Système';
-  };
-
-  const getActionConfig = (action) => {
-    const configs = {
-      'created': { label: 'Créée', icon: FileText, color: 'bg-blue-500' },
-      'submitted': { label: 'Soumise', icon: Send, color: 'bg-yellow-500' },
-      'validated': { label: 'Validée', icon: CheckCircle2, color: 'bg-green-500' },
-      'rejected': { label: 'Rejetée', icon: XCircle, color: 'bg-red-500' },
-      'admin_edit': { label: 'Modifiée par Admin', icon: Edit3, color: 'bg-orange-500' },
-      'admin_delete': { label: 'Supprimée par Admin', icon: Trash2, color: 'bg-red-600' },
-      'updated': { label: 'Modifiée', icon: Edit3, color: 'bg-blue-400' }
-    };
-    return configs[action] || { label: action, icon: Clock, color: 'bg-gray-400' };
-  };
-
-  const config = getActionConfig(event.action);
-  const Icon = config.icon;
-
-  return (
-    <div className="flex gap-4 pb-4">
-      <div className="flex flex-col items-center">
-        <div className={`w-8 h-8 rounded-full ${config.color} flex items-center justify-center`}>
-          <Icon className="h-4 w-4 text-white" />
-        </div>
-        <div className="w-0.5 h-full bg-border mt-2"></div>
-      </div>
-      <div className="flex-1 pb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium">{config.label}</span>
-          <span className="text-xs text-muted-foreground">
-            {new Date(event.performed_at).toLocaleString('fr-FR')}
-          </span>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Par {getUserName(event.performed_by)}
-        </p>
-        {event.reason && (
-          <p className="text-sm text-muted-foreground italic mt-1 bg-secondary/50 p-2 rounded">
-            "{event.reason}"
-          </p>
-        )}
-        {event.old_values && event.new_values && (
-          <div className="mt-2 text-sm bg-secondary/30 p-2 rounded">
-            {event.old_values.hours !== event.new_values.hours && (
-              <p className="flex items-center gap-2">
-                <span className="text-muted-foreground">Heures:</span>
-                <span className="line-through text-red-500">{event.old_values.hours}h</span>
-                <ArrowRight className="h-3 w-3" />
-                <span className="font-medium text-green-600">{event.new_values.hours}h</span>
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+// Week days helper
+const getWeekDays = (date) => {
+  const start = new Date(date);
+  start.setDate(start.getDate() - start.getDay() + 1); // Monday
+  
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    days.push(d);
+  }
+  return days;
 };
+
+const DAY_NAMES = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
 export default function TimeEntryPage() {
   const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [timeEntries, setTimeEntries] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('saisie');
-  const [myHistory, setMyHistory] = useState([]);
   
-  // Dialog states
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedEntry, setSelectedEntry] = useState(null);
-  const [entryTimeline, setEntryTimeline] = useState([]);
+  // Master data
+  const [projects, setProjects] = useState([]);
+  const [disciplines, setDisciplines] = useState([]);
+  const [bookingCodes, setBookingCodes] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [users, setUsers] = useState([]);
   
-  // Undo deletion state
-  const [pendingDeletion, setPendingDeletion] = useState(null);
-  const undoTimeoutRef = useRef(null);
+  // Time entries (rows)
+  const [rows, setRows] = useState([]);
   
-  // Week submission state
-  const [weekStatus, setWeekStatus] = useState('draft'); // draft, submitted, partial
-  const [submittingWeek, setSubmittingWeek] = useState(false);
+  // Week status
+  const [weekStatus, setWeekStatus] = useState('draft');
+  const [submitting, setSubmitting] = useState(false);
+  
+  // Dialog
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false);
 
+  const weekDays = getWeekDays(currentDate);
+  
   useEffect(() => {
     fetchData();
-    return () => {
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-    };
   }, [currentDate]);
-
-  useEffect(() => {
-    if (activeTab === 'historique') {
-      fetchMyHistory();
-    }
-  }, [activeTab]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const weekStart = getWeekStart(currentDate);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-
-      const [entriesRes, projectsRes] = await Promise.all([
+      const weekStart = weekDays[0].toISOString().split('T')[0];
+      const weekEnd = weekDays[6].toISOString().split('T')[0];
+      
+      const [
+        disciplinesRes,
+        bookingCodesRes,
+        activitiesRes,
+        projectsRes,
+        entriesRes
+      ] = await Promise.all([
+        axios.get('/disciplines'),
+        axios.get('/booking-codes'),
+        axios.get('/activities'),
+        axios.get('/project-assignments/my-projects'),
         axios.get('/time-entries', {
           params: {
             user_id: user.id,
-            start_date: weekStart.toISOString().split('T')[0],
-            end_date: weekEnd.toISOString().split('T')[0]
+            start_date: weekStart,
+            end_date: weekEnd
           }
-        }),
-        axios.get('/projects')
+        })
       ]);
-
-      // Fetch users for admins/managers
-      try {
-        if (user.role !== 'employee') {
-          const usersRes = await axios.get('/users');
-          setUsers(usersRes.data);
-        }
-      } catch (e) {
-        console.log('Users list not available');
-      }
-
-      const availableProjects = projectsRes.data.filter(p => p.status !== 'archived');
-      setProjects(availableProjects);
       
-      const grouped = groupEntries(entriesRes.data);
-      setTimeEntries(grouped);
+      setDisciplines(disciplinesRes.data || []);
+      setBookingCodes(bookingCodesRes.data || []);
+      setActivities(activitiesRes.data || []);
+      setProjects(projectsRes.data || []);
+      
+      // Fetch users for managers
+      if (user.role !== 'employee') {
+        try {
+          const usersRes = await axios.get('/users');
+          setUsers(usersRes.data || []);
+        } catch (e) {}
+      }
+      
+      // Group entries into rows
+      const entries = entriesRes.data || [];
+      const grouped = groupEntriesIntoRows(entries, weekDays);
+      
+      if (grouped.length === 0) {
+        // Add one empty row
+        grouped.push(createEmptyRow());
+      }
+      
+      setRows(grouped);
       
       // Calculate week status
-      calculateWeekStatus(entriesRes.data);
+      const allSubmitted = entries.length > 0 && entries.every(e => e.status === 'submitted' || e.status === 'validated');
+      const anySubmitted = entries.some(e => e.status === 'submitted' || e.status === 'validated');
+      setWeekStatus(allSubmitted ? 'submitted' : anySubmitted ? 'partial' : 'draft');
       
-      if (grouped.length === 0 && availableProjects.length > 0) {
-        setTimeEntries([createEmptyEntry()]);
-      }
     } catch (error) {
       console.error('Failed to fetch data', error);
       toast.error('Erreur lors du chargement');
@@ -254,872 +191,667 @@ export default function TimeEntryPage() {
     }
   };
 
-  const fetchMyHistory = async () => {
-    try {
-      const response = await axios.get('/time-entries', {
-        params: { user_id: user.id }
-      });
-      // Sort by date descending
-      const sorted = response.data.sort((a, b) => new Date(b.date) - new Date(a.date));
-      setMyHistory(sorted);
-    } catch (error) {
-      console.error('Failed to fetch history', error);
-    }
+  const groupEntriesIntoRows = (entries, days) => {
+    // Group by project+discipline+bookingCode+activity
+    const grouped = {};
+    
+    entries.forEach(entry => {
+      const key = `${entry.project_id}|${entry.discipline_id || ''}|${entry.booking_code_id || ''}|${entry.activity_id || ''}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          id: key,
+          project_id: entry.project_id,
+          discipline_id: entry.discipline_id,
+          booking_code_id: entry.booking_code_id,
+          activity_id: entry.activity_id,
+          days: {},
+          isLocked: false
+        };
+      }
+      
+      const dateKey = entry.date.split('T')[0];
+      grouped[key].days[dateKey] = {
+        entry_id: entry.id,
+        hours: entry.hours,
+        status: entry.status,
+        comment: entry.comment
+      };
+      
+      // Check if any day is locked
+      if (entry.status === 'validated' || entry.last_edited_by) {
+        grouped[key].isLocked = true;
+      }
+    });
+    
+    return Object.values(grouped);
   };
 
-  const fetchEntryTimeline = async (entryId) => {
-    try {
-      const response = await axios.get('/audit-log', {
-        params: {
-          entity_type: 'time_entry',
-          entity_id: entryId
-        }
-      });
-      setEntryTimeline(response.data);
-    } catch (error) {
-      // Audit log may not be accessible for employees
-      setEntryTimeline([]);
-    }
-  };
-
-  const createEmptyEntry = () => ({
+  const createEmptyRow = () => ({
+    id: `new-${Date.now()}`,
     project_id: '',
-    discipline: '',
-    activity: '',
-    service_type: '',
+    discipline_id: '',
+    booking_code_id: '',
+    activity_id: '',
+    days: {},
     isNew: true,
-    hours: {},
-    entryIds: {},
-    statuses: {},
-    lastEditedBy: {},
-    rejectionReasons: {}
+    isLocked: false
   });
 
-  const getWeekStart = (date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff));
-  };
-
-  const getWeekDates = () => {
-    const start = getWeekStart(currentDate);
-    const dates = [];
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(start);
-      date.setDate(start.getDate() + i);
-      dates.push(date);
-    }
-    return dates;
-  };
-
-  const groupEntries = (entries) => {
-    const grouped = [];
-    const seen = new Set();
-
-    entries.forEach(entry => {
-      const key = `${entry.project_id}-${entry.discipline}-${entry.activity}-${entry.service_type}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        grouped.push({
-          project_id: entry.project_id,
-          discipline: entry.discipline,
-          activity: entry.activity,
-          service_type: entry.service_type,
-          isNew: false,
-          hours: {},
-          entryIds: {},
-          statuses: {},
-          lastEditedBy: {},
-          rejectionReasons: {}
-        });
-      }
-    });
-
-    entries.forEach(entry => {
-      const dateKey = entry.date.split('T')[0];
-      const groupIndex = grouped.findIndex(g => 
-        g.project_id === entry.project_id &&
-        g.discipline === entry.discipline &&
-        g.activity === entry.activity &&
-        g.service_type === entry.service_type
-      );
-
-      if (groupIndex !== -1) {
-        grouped[groupIndex].hours[dateKey] = entry.hours;
-        grouped[groupIndex].entryIds[dateKey] = entry.id;
-        grouped[groupIndex].statuses[dateKey] = entry.status;
-        grouped[groupIndex].lastEditedBy[dateKey] = entry.last_edited_by;
-        grouped[groupIndex].rejectionReasons[dateKey] = entry.rejection_reason;
-      }
-    });
-
-    return grouped;
-  };
-
-  const calculateWeekStatus = (entries) => {
-    if (entries.length === 0) {
-      setWeekStatus('draft');
-      return;
-    }
-    
-    const hasSubmitted = entries.some(e => e.status === 'submitted');
-    const hasDraft = entries.some(e => e.status === 'draft');
-    const allValidated = entries.every(e => e.status === 'validated');
-    
-    if (allValidated) {
-      setWeekStatus('validated');
-    } else if (hasSubmitted && hasDraft) {
-      setWeekStatus('partial');
-    } else if (hasSubmitted) {
-      setWeekStatus('submitted');
-    } else {
-      setWeekStatus('draft');
-    }
-  };
-
-  const getProjectName = (projectId) => {
-    const project = projects.find(p => p.id === projectId);
-    return project ? project.name : projectId;
-  };
-
-  const getProjectDisciplines = (projectId) => {
-    if (!projectId) return [];
-    const project = projects.find(p => p.id === projectId);
-    if (!project || !project.disciplines || project.disciplines.length === 0) {
-      return DISCIPLINES.map(d => d.value);
-    }
-    return project.disciplines;
-  };
-
-  const handleHoursChange = (index, dateStr, value) => {
-    const newEntries = [...timeEntries];
-    newEntries[index].hours[dateStr] = value;
-    setTimeEntries(newEntries);
-  };
-
-  const handleFieldChange = (index, field, value) => {
-    const newEntries = [...timeEntries];
-    newEntries[index][field] = value;
-    
-    // Reset dependent fields
-    if (field === 'project_id') {
-      newEntries[index].discipline = '';
-      newEntries[index].activity = '';
-      newEntries[index].service_type = '';
-    } else if (field === 'discipline') {
-      newEntries[index].activity = '';
-      newEntries[index].service_type = '';
-    } else if (field === 'activity') {
-      newEntries[index].service_type = '';
-    }
-    
-    setTimeEntries(newEntries);
-  };
-
-  const validateEntry = (entry) => {
-    if (!entry.project_id) return 'Veuillez sélectionner un projet';
-    if (!entry.discipline) return 'Veuillez sélectionner une discipline';
-    if (!entry.activity) return 'Veuillez sélectionner une activité';
-    if (!entry.service_type) return 'Veuillez sélectionner une prestation';
-    return null;
-  };
-
-  const handleSaveCell = async (entry, dateStr) => {
-    const hours = parseFloat(entry.hours[dateStr]);
-    if (isNaN(hours) || hours < 0) {
-      toast.error('Heures invalides');
-      return;
-    }
-
-    // Validate entry fields
-    const error = validateEntry(entry);
-    if (error) {
-      toast.error(error);
-      return;
-    }
-
-    // Check lock status
-    const config = getStatusConfig(entry.statuses?.[dateStr], entry.lastEditedBy?.[dateStr]);
-    if (config.locked) {
-      toast.error(config.locked ? 'Cette saisie est verrouillée' : 'Modification impossible');
-      return;
-    }
-
-    try {
-      const entryData = {
-        project_id: entry.project_id,
-        discipline: entry.discipline,
-        activity: entry.activity,
-        service_type: entry.service_type,
-        date: dateStr,
-        hours: hours,
-        task_description: '',
-        day_type: 'présentiel'
-      };
-
-      if (entry.entryIds[dateStr]) {
-        await axios.put(`/time-entries/${entry.entryIds[dateStr]}`, entryData);
-        toast.success('Modifié');
-      } else if (hours > 0) {
-        const response = await axios.post('/time-entries', entryData);
-        const newEntries = [...timeEntries];
-        const index = timeEntries.indexOf(entry);
-        newEntries[index].entryIds[dateStr] = response.data.id;
-        newEntries[index].statuses[dateStr] = 'draft';
-        newEntries[index].isNew = false;
-        setTimeEntries(newEntries);
-        toast.success('Enregistré');
-      }
-    } catch (error) {
-      const msg = error.response?.data?.detail || 'Erreur de sauvegarde';
-      toast.error(msg);
-    }
-  };
-
-  const handleDuplicateLine = (entry) => {
-    const newEntry = {
-      ...createEmptyEntry(),
-      project_id: entry.project_id,
-      discipline: entry.discipline,
-      activity: entry.activity,
-      service_type: entry.service_type
-    };
-    setTimeEntries([...timeEntries, newEntry]);
-    toast.success('Ligne dupliquée');
-  };
-
-  const handleDeleteLine = (index) => {
-    const entry = timeEntries[index];
-    const entryIds = Object.values(entry.entryIds).filter(Boolean);
-    
-    // Check if any entries are locked
-    const hasLocked = Object.keys(entry.statuses).some(dateStr => {
-      const config = getStatusConfig(entry.statuses[dateStr], entry.lastEditedBy?.[dateStr]);
-      return config.locked;
-    });
-    
-    if (hasLocked) {
-      toast.error('Impossible de supprimer une ligne avec des saisies validées');
-      return;
-    }
-
-    // Store for undo
-    const deletedEntry = { ...entry, index };
-    const newEntries = timeEntries.filter((_, i) => i !== index);
-    setTimeEntries(newEntries);
-    
-    // Set pending deletion
-    setPendingDeletion({ entry: deletedEntry, entryIds });
-    
-    // Show undo toast
-    toast.success(
-      <div className="flex items-center gap-3">
-        <span>Ligne supprimée</span>
-        <Button 
-          size="sm" 
-          variant="outline" 
-          onClick={() => handleUndoDelete(deletedEntry, newEntries)}
-          className="h-7"
-        >
-          <Undo2 className="h-3 w-3 mr-1" />
-          Annuler
-        </Button>
-      </div>,
-      { duration: 10000 }
-    );
-    
-    // Set timeout for permanent deletion
-    undoTimeoutRef.current = setTimeout(async () => {
-      if (entryIds.length > 0) {
-        try {
-          await Promise.all(entryIds.map(id => axios.delete(`/time-entries/${id}`)));
-        } catch (error) {
-          console.error('Failed to delete entries', error);
-        }
-      }
-      setPendingDeletion(null);
-    }, 10000);
-  };
-
-  const handleUndoDelete = (deletedEntry, currentEntries) => {
-    if (undoTimeoutRef.current) {
-      clearTimeout(undoTimeoutRef.current);
-    }
-    
-    const newEntries = [...currentEntries];
-    newEntries.splice(deletedEntry.index, 0, deletedEntry);
-    setTimeEntries(newEntries);
-    setPendingDeletion(null);
-    toast.success('Suppression annulée');
-  };
-
-  const handleSubmitWeek = async () => {
-    setSubmittingWeek(true);
-    try {
-      // Collect all draft entry IDs
-      const draftIds = [];
-      timeEntries.forEach(entry => {
-        Object.keys(entry.entryIds).forEach(dateStr => {
-          if (entry.statuses[dateStr] === 'draft' || entry.statuses[dateStr] === 'rejected') {
-            draftIds.push(entry.entryIds[dateStr]);
-          }
-        });
-      });
-
-      if (draftIds.length === 0) {
-        toast.info('Aucune saisie à soumettre');
-        return;
-      }
-
-      await axios.post('/time-entries/submit', { entry_ids: draftIds });
-      toast.success(`${draftIds.length} saisie(s) soumise(s) pour validation`);
-      fetchData();
-    } catch (error) {
-      toast.error('Erreur lors de la soumission');
-    } finally {
-      setSubmittingWeek(false);
-    }
-  };
-
-  const handleCancelSubmission = async () => {
-    // This would require a backend endpoint to cancel submission
-    toast.info('Fonctionnalité à venir');
-  };
-
-  const handleViewDetails = async (entry, dateStr) => {
-    const entryId = entry.entryIds?.[dateStr];
-    if (!entryId) return;
-
-    const fullEntry = {
-      ...entry,
-      id: entryId,
-      date: dateStr,
-      currentHours: entry.hours[dateStr],
-      status: entry.statuses?.[dateStr],
-      last_edited_by: entry.lastEditedBy?.[dateStr],
-      rejection_reason: entry.rejectionReasons?.[dateStr]
-    };
-
-    setSelectedEntry(fullEntry);
-    await fetchEntryTimeline(entryId);
-    setDetailDialogOpen(true);
-  };
-
-  const addNewLine = () => {
-    if (projects.length === 0) {
-      toast.error('Aucun projet disponible');
-      return;
-    }
-    setTimeEntries([...timeEntries, createEmptyEntry()]);
-  };
-
-  const previousWeek = () => {
+  // Navigation
+  const goToPreviousWeek = () => {
     const newDate = new Date(currentDate);
     newDate.setDate(newDate.getDate() - 7);
     setCurrentDate(newDate);
   };
 
-  const nextWeek = () => {
+  const goToNextWeek = () => {
     const newDate = new Date(currentDate);
     newDate.setDate(newDate.getDate() + 7);
     setCurrentDate(newDate);
   };
 
-  const weekDates = getWeekDates();
-  const weekStart = weekDates[0];
-  const weekEnd = weekDates[6];
+  const goToCurrentWeek = () => {
+    setCurrentDate(new Date());
+  };
 
-  // Calculate week totals
-  const weekTotal = timeEntries.reduce((total, entry) => {
-    return total + Object.values(entry.hours).reduce((sum, h) => sum + (parseFloat(h) || 0), 0);
-  }, 0);
+  // Add new row
+  const addRow = () => {
+    setRows([...rows, createEmptyRow()]);
+  };
+
+  // Update row field
+  const updateRowField = (rowIndex, field, value) => {
+    const newRows = [...rows];
+    newRows[rowIndex] = { ...newRows[rowIndex], [field]: value };
+    setRows(newRows);
+  };
+
+  // Update hours for a day
+  const updateDayHours = (rowIndex, dateKey, hours) => {
+    const newRows = [...rows];
+    const row = { ...newRows[rowIndex] };
+    row.days = { ...row.days };
+    
+    if (!row.days[dateKey]) {
+      row.days[dateKey] = { hours: 0 };
+    }
+    row.days[dateKey] = { ...row.days[dateKey], hours: parseFloat(hours) || 0 };
+    
+    newRows[rowIndex] = row;
+    setRows(newRows);
+  };
+
+  // Delete row
+  const deleteRow = (rowIndex) => {
+    if (rows.length <= 1) {
+      toast.error('Vous devez garder au moins une ligne');
+      return;
+    }
+    const newRows = rows.filter((_, i) => i !== rowIndex);
+    setRows(newRows);
+  };
+
+  // Save entries
+  const saveEntries = async () => {
+    // Validate rows
+    for (const row of rows) {
+      const hasHours = Object.values(row.days).some(d => d.hours > 0);
+      if (hasHours) {
+        if (!row.project_id) {
+          toast.error('Projet obligatoire pour chaque ligne avec des heures');
+          return;
+        }
+        if (!row.discipline_id) {
+          toast.error('Discipline obligatoire pour chaque ligne avec des heures');
+          return;
+        }
+        if (!row.booking_code_id) {
+          toast.error('Prestation (Booking Code) obligatoire pour chaque ligne avec des heures');
+          return;
+        }
+        if (!row.activity_id) {
+          toast.error('Activité obligatoire pour chaque ligne avec des heures');
+          return;
+        }
+      }
+    }
+    
+    try {
+      // Get booking code info for billable flag
+      const bookingCodeMap = {};
+      bookingCodes.forEach(bc => { bookingCodeMap[bc.id] = bc; });
+      
+      // Build entries to save
+      const entriesToSave = [];
+      
+      for (const row of rows) {
+        for (const [dateKey, dayData] of Object.entries(row.days)) {
+          if (dayData.hours > 0 && row.project_id) {
+            const bookingCode = bookingCodeMap[row.booking_code_id];
+            
+            entriesToSave.push({
+              id: dayData.entry_id,
+              project_id: row.project_id,
+              discipline_id: row.discipline_id,
+              booking_code_id: row.booking_code_id,
+              activity_id: row.activity_id,
+              date: dateKey,
+              hours: dayData.hours,
+              is_billable: bookingCode?.is_billable || false,
+              status: dayData.status || 'draft'
+            });
+          }
+        }
+      }
+      
+      // Send to backend
+      await axios.post('/time-entries/bulk', { entries: entriesToSave });
+      toast.success('Saisies enregistrées');
+      fetchData();
+    } catch (error) {
+      console.error('Save failed', error);
+      toast.error(error.response?.data?.detail || 'Erreur lors de la sauvegarde');
+    }
+  };
+
+  // Submit week
+  const submitWeek = async () => {
+    setSubmitting(true);
+    try {
+      const weekStart = weekDays[0].toISOString().split('T')[0];
+      const weekEnd = weekDays[6].toISOString().split('T')[0];
+      
+      await axios.post('/time-entries/submit', {
+        user_id: user.id,
+        start_date: weekStart,
+        end_date: weekEnd
+      });
+      
+      toast.success('Semaine soumise pour validation');
+      fetchData();
+    } catch (error) {
+      console.error('Submit failed', error);
+      toast.error(error.response?.data?.detail || 'Erreur lors de la soumission');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Calculate totals
+  const getRowTotal = (row) => {
+    return Object.values(row.days).reduce((sum, d) => sum + (d.hours || 0), 0);
+  };
+
+  const getDayTotal = (dateKey) => {
+    return rows.reduce((sum, row) => sum + (row.days[dateKey]?.hours || 0), 0);
+  };
+
+  const getWeekTotal = () => {
+    return rows.reduce((sum, row) => sum + getRowTotal(row), 0);
+  };
+
+  const getBillableTotal = () => {
+    const bookingCodeMap = {};
+    bookingCodes.forEach(bc => { bookingCodeMap[bc.id] = bc; });
+    
+    return rows.reduce((sum, row) => {
+      const bookingCode = bookingCodeMap[row.booking_code_id];
+      if (bookingCode?.is_billable) {
+        return sum + getRowTotal(row);
+      }
+      return sum;
+    }, 0);
+  };
+
+  // Get project name
+  const getProjectName = (projectId) => {
+    const project = projects.find(p => p.id === projectId);
+    return project?.name || project?.code || '';
+  };
+
+  // Get discipline name
+  const getDisciplineName = (disciplineId) => {
+    const disc = disciplines.find(d => d.id === disciplineId);
+    return disc?.code || disc?.name || '';
+  };
+
+  // Get booking code
+  const getBookingCode = (bookingCodeId) => {
+    return bookingCodes.find(bc => bc.id === bookingCodeId);
+  };
+
+  // Get activity name
+  const getActivityName = (activityId) => {
+    const act = activities.find(a => a.id === activityId);
+    return act?.name || '';
+  };
 
   if (loading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
         </div>
       </DashboardLayout>
     );
   }
 
+  const weekTotal = getWeekTotal();
+  const billableTotal = getBillableTotal();
+  const billablePercent = weekTotal > 0 ? (billableTotal / weekTotal) * 100 : 0;
+
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div data-testid="time-entry-page" className="space-y-4">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-heading font-bold tracking-tight mb-2">Saisie du temps</h1>
-            <p className="text-muted-foreground">
-              Enregistrez vos heures de travail hebdomadaires
+            <h1 className="text-3xl font-heading font-bold tracking-tight">Saisie du temps</h1>
+            <p className="text-muted-foreground text-sm">
+              Booking Code = Facturation • Remplissez tous les champs obligatoires
             </p>
           </div>
+          
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-lg px-4 py-2">
-              <Clock className="h-4 w-4 mr-2" />
-              {weekTotal.toFixed(1)}h cette semaine
-            </Badge>
+            <Button variant="ghost" size="icon" onClick={() => setInfoDialogOpen(true)}>
+              <Info className="h-5 w-5" />
+            </Button>
           </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="saisie" data-testid="tab-saisie">
-              <Calendar className="mr-2 h-4 w-4" />
-              Grille de saisie
-            </TabsTrigger>
-            <TabsTrigger value="historique" data-testid="tab-historique">
-              <History className="mr-2 h-4 w-4" />
-              Mon historique
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Saisie Tab */}
-          <TabsContent value="saisie" className="space-y-4 mt-6">
-            {/* Week Navigation */}
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <Button variant="outline" onClick={previousWeek} data-testid="prev-week-btn">
-                    <ChevronLeft className="h-4 w-4 mr-2" />
-                    Semaine précédente
-                  </Button>
-                  <div className="text-center">
-                    <p className="text-lg font-semibold">
-                      {formatDate(weekStart)} - {formatDate(weekEnd)}
-                    </p>
-                    <div className="flex items-center justify-center gap-2 mt-1">
-                      {weekStatus === 'validated' && (
-                        <Badge className="bg-green-100 text-green-700">
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          Semaine validée
-                        </Badge>
-                      )}
-                      {weekStatus === 'submitted' && (
-                        <Badge className="bg-yellow-100 text-yellow-700">
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                          En attente de validation
-                        </Badge>
-                      )}
-                      {weekStatus === 'partial' && (
-                        <Badge className="bg-orange-100 text-orange-700">
-                          <Clock className="h-3 w-3 mr-1" />
-                          Partiellement soumise
-                        </Badge>
-                      )}
-                    </div>
+        {/* Week Navigator + Stats */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* Week Navigation */}
+          <Card className="lg:col-span-2">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <Button variant="outline" size="icon" onClick={goToPreviousWeek}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <div className="text-center">
+                  <div className="font-semibold">
+                    Semaine du {formatDate(weekDays[0])} au {formatDate(weekDays[6])}
                   </div>
-                  <Button variant="outline" onClick={nextWeek} data-testid="next-week-btn">
-                    Semaine suivante
-                    <ChevronRight className="h-4 w-4 ml-2" />
+                  <Button variant="link" size="sm" onClick={goToCurrentWeek} className="text-xs">
+                    Semaine actuelle
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
+                
+                <Button variant="outline" size="icon" onClick={goToNextWeek}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Legend */}
-            <div className="flex flex-wrap gap-3 text-sm">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-gray-400"></div>
-                <span>Brouillon</span>
+          {/* Week Stats */}
+          <Card>
+            <CardContent className="p-4 flex flex-col justify-center h-full">
+              <div className="text-sm text-muted-foreground">Total semaine</div>
+              <div className="text-3xl font-bold font-mono">{weekTotal.toFixed(1)}h</div>
+              <div className="text-xs text-muted-foreground">/ {7 * (user.capacity_hours_per_day || 7)}h capacité</div>
+            </CardContent>
+          </Card>
+
+          {/* Billable Stats */}
+          <Card className={billablePercent >= 70 ? 'border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/20'}>
+            <CardContent className="p-4 flex flex-col justify-center h-full">
+              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                <DollarSign className="h-3 w-3" />
+                Facturable
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                <span>En attente</span>
+              <div className="text-3xl font-bold font-mono">{billablePercent.toFixed(0)}%</div>
+              <div className="text-xs text-muted-foreground">{billableTotal.toFixed(1)}h sur {weekTotal.toFixed(1)}h</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Time Entry Grid */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Grille de saisie</CardTitle>
+                <CardDescription>
+                  Projet → Discipline → Prestation (Booking Code) → Activité → Heures
+                </CardDescription>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span>Validée</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <span>Rejetée</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Lock className="w-3 h-3 text-muted-foreground" />
-                <span>Verrouillée</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={addRow}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Ligne
+                </Button>
               </div>
             </div>
-
-            {/* Time Entry Grid */}
-            <Card>
-              <CardContent className="pt-6">
-                {projects.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Aucun projet disponible</h3>
-                    <p className="text-muted-foreground">Contactez votre administrateur.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse" data-testid="time-entry-grid">
-                        <thead>
-                          <tr>
-                            <th className="border p-2 bg-secondary text-left min-w-[140px]">Projet</th>
-                            <th className="border p-2 bg-secondary text-left min-w-[100px]">Discipline</th>
-                            <th className="border p-2 bg-secondary text-left min-w-[90px]">Activité</th>
-                            <th className="border p-2 bg-secondary text-left min-w-[110px]">Prestation</th>
-                            {weekDates.map(date => (
-                              <th key={date.toISOString()} className="border p-2 bg-secondary text-center min-w-[80px]">
-                                <div className="text-xs text-muted-foreground">
-                                  {date.toLocaleDateString('fr-FR', { weekday: 'short' })}
-                                </div>
-                                <div className="text-sm font-medium">
-                                  {date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
-                                </div>
-                              </th>
-                            ))}
-                            <th className="border p-2 bg-secondary w-10"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {timeEntries.map((entry, index) => (
-                            <tr key={index} className="hover:bg-secondary/30">
-                              {/* Project */}
-                              <td className="border p-2">
-                                {entry.isNew ? (
-                                  <Select
-                                    value={entry.project_id}
-                                    onValueChange={(val) => handleFieldChange(index, 'project_id', val)}
-                                  >
-                                    <SelectTrigger className="h-8" data-testid={`project-select-${index}`}>
-                                      <SelectValue placeholder="Projet" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {projects.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
-                                  <span className="text-sm font-medium">{getProjectName(entry.project_id)}</span>
-                                )}
-                              </td>
-                              
-                              {/* Discipline */}
-                              <td className="border p-2">
-                                {entry.isNew ? (
-                                  <Select
-                                    value={entry.discipline}
-                                    onValueChange={(val) => handleFieldChange(index, 'discipline', val)}
-                                    disabled={!entry.project_id}
-                                  >
-                                    <SelectTrigger className="h-8">
-                                      <SelectValue placeholder={entry.project_id ? "Discipline" : "..."} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {getProjectDisciplines(entry.project_id).map(d => (
-                                        <SelectItem key={d} value={d}>{d}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
-                                  <span className="text-sm">{entry.discipline}</span>
-                                )}
-                              </td>
-                              
-                              {/* Activity */}
-                              <td className="border p-2">
-                                {entry.isNew ? (
-                                  <Select
-                                    value={entry.activity}
-                                    onValueChange={(val) => handleFieldChange(index, 'activity', val)}
-                                    disabled={!entry.discipline}
-                                  >
-                                    <SelectTrigger className="h-8">
-                                      <SelectValue placeholder={entry.discipline ? "Activité" : "..."} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {ACTIVITIES.map(a => (
-                                        <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
-                                  <span className="text-sm">{entry.activity}</span>
-                                )}
-                              </td>
-                              
-                              {/* Service Type */}
-                              <td className="border p-2">
-                                {entry.isNew ? (
-                                  <Select
-                                    value={entry.service_type}
-                                    onValueChange={(val) => handleFieldChange(index, 'service_type', val)}
-                                    disabled={!entry.activity}
-                                  >
-                                    <SelectTrigger className="h-8">
-                                      <SelectValue placeholder={entry.activity ? "Prestation" : "..."} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {SERVICE_TYPES.map(s => (
-                                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
-                                  <span className="text-sm">{entry.service_type}</span>
-                                )}
-                              </td>
-                              
-                              {/* Hours cells */}
-                              {weekDates.map(date => {
-                                const dateStr = date.toISOString().split('T')[0];
-                                const hours = entry.hours[dateStr] || '';
-                                const status = entry.statuses?.[dateStr];
-                                const lastEditedBy = entry.lastEditedBy?.[dateStr];
-                                const config = getStatusConfig(status, lastEditedBy);
-                                const isLocked = config.locked;
-
-                                return (
-                                  <td key={date.toISOString()} className="border p-1">
-                                    <div className="relative">
-                                      <Input
-                                        type="number"
-                                        step="0.5"
-                                        min="0"
-                                        max="24"
-                                        value={hours}
-                                        onChange={(e) => handleHoursChange(index, dateStr, e.target.value)}
-                                        onBlur={() => handleSaveCell(entry, dateStr)}
-                                        disabled={isLocked}
-                                        className={`h-9 text-center pr-6 ${
-                                          isLocked ? 'bg-secondary cursor-not-allowed' : ''
-                                        } ${status === 'validated' ? 'border-green-300' : ''} 
-                                        ${status === 'rejected' ? 'border-red-300' : ''}
-                                        ${status === 'submitted' ? 'border-yellow-300' : ''}`}
-                                        placeholder="0"
-                                        data-testid={`hours-input-${index}-${dateStr}`}
-                                      />
-                                      {/* Status indicator */}
-                                      <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                                        {isLocked && <Lock className="h-3 w-3 text-muted-foreground" />}
-                                        {status === 'validated' && !isLocked && (
-                                          <CheckCircle2 className="h-3 w-3 text-green-500" />
-                                        )}
-                                        {status === 'rejected' && (
-                                          <XCircle className="h-3 w-3 text-red-500" />
-                                        )}
-                                        {status === 'submitted' && (
-                                          <AlertCircle className="h-3 w-3 text-yellow-500" />
-                                        )}
-                                      </div>
-                                    </div>
-                                  </td>
-                                );
-                              })}
-                              
-                              {/* Actions menu */}
-                              <td className="border p-1">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" data-testid={`row-menu-${index}`}>
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    {/* Show different options based on entry status */}
-                                    {!entry.isNew && (
-                                      <>
-                                        <DropdownMenuItem onClick={() => handleViewDetails(entry, Object.keys(entry.entryIds)[0])}>
-                                          <Eye className="h-4 w-4 mr-2" />
-                                          Voir le détail
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleViewDetails(entry, Object.keys(entry.entryIds)[0])}>
-                                          <History className="h-4 w-4 mr-2" />
-                                          Historique
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                      </>
-                                    )}
-                                    <DropdownMenuItem onClick={() => handleDuplicateLine(entry)}>
-                                      <Copy className="h-4 w-4 mr-2" />
-                                      Dupliquer la ligne
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem 
-                                      onClick={() => handleDeleteLine(index)}
-                                      className="text-red-600 focus:text-red-600"
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Supprimer la ligne
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                      <Button onClick={addNewLine} variant="outline" data-testid="add-line-btn">
-                        + Ajouter une ligne
-                      </Button>
-                      
-                      <div className="flex items-center gap-2">
-                        {weekStatus === 'submitted' && (
-                          <Button variant="outline" onClick={handleCancelSubmission}>
-                            Annuler la soumission
-                          </Button>
-                        )}
-                        {(weekStatus === 'draft' || weekStatus === 'partial') && (
-                          <Button 
-                            onClick={handleSubmitWeek} 
-                            disabled={submittingWeek}
-                            data-testid="submit-week-btn"
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="p-2 text-left text-xs font-semibold min-w-[150px]">Projet *</th>
+                    <th className="p-2 text-left text-xs font-semibold min-w-[100px]">Discipline *</th>
+                    <th className="p-2 text-left text-xs font-semibold min-w-[180px]">
+                      Prestation *
+                      <span className="block text-[10px] font-normal text-muted-foreground">(Booking Code)</span>
+                    </th>
+                    <th className="p-2 text-left text-xs font-semibold min-w-[120px]">Activité *</th>
+                    {weekDays.map((day, i) => {
+                      const isWeekend = i >= 5;
+                      const isToday = day.toDateString() === new Date().toDateString();
+                      return (
+                        <th 
+                          key={i} 
+                          className={`p-2 text-center text-xs font-semibold min-w-[60px] ${
+                            isWeekend ? 'bg-slate-100 dark:bg-slate-800' : ''
+                          } ${isToday ? 'ring-2 ring-accent ring-inset' : ''}`}
+                        >
+                          <div>{DAY_NAMES[i]}</div>
+                          <div className="font-normal text-muted-foreground">{day.getDate()}</div>
+                        </th>
+                      );
+                    })}
+                    <th className="p-2 text-center text-xs font-semibold min-w-[60px] bg-accent/10">Total</th>
+                    <th className="p-2 w-[40px]"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, rowIndex) => {
+                    const bookingCode = getBookingCode(row.booking_code_id);
+                    const rowTotal = getRowTotal(row);
+                    
+                    return (
+                      <tr key={row.id} className="border-b hover:bg-muted/20">
+                        {/* Project */}
+                        <td className="p-1">
+                          <Select 
+                            value={row.project_id} 
+                            onValueChange={(v) => updateRowField(rowIndex, 'project_id', v)}
+                            disabled={row.isLocked}
                           >
-                            <Send className="h-4 w-4 mr-2" />
-                            {submittingWeek ? 'Envoi...' : 'Soumettre la semaine'}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Historique Tab */}
-          <TabsContent value="historique" className="space-y-4 mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Mon historique de saisies</CardTitle>
-                <CardDescription>Consultez toutes vos saisies et leur statut</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {myHistory.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Aucune saisie trouvée
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {myHistory.map(entry => (
-                      <div
-                        key={entry.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-secondary/30 transition-colors"
-                        data-testid={`history-entry-${entry.id}`}
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <span className="font-medium">{getProjectName(entry.project_id)}</span>
-                            <span className="text-muted-foreground">•</span>
-                            <span className="text-sm text-muted-foreground">
-                              {entry.discipline} / {entry.activity}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 mt-2">
-                            <span className="text-2xl font-bold">{entry.hours}h</span>
-                            <StatusBadge status={entry.status} lastEditedBy={entry.last_edited_by} />
-                            <span className="text-sm text-muted-foreground">
-                              {formatDate(entry.date)}
-                            </span>
-                          </div>
-                          {entry.rejection_reason && (
-                            <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
-                              Raison du rejet: {entry.rejection_reason}
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Projet..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {projects.map(p => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  <span className="font-mono text-xs">{p.code}</span>
+                                  <span className="ml-1 text-xs">{p.name}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        
+                        {/* Discipline */}
+                        <td className="p-1">
+                          <Select 
+                            value={row.discipline_id} 
+                            onValueChange={(v) => updateRowField(rowIndex, 'discipline_id', v)}
+                            disabled={row.isLocked}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Disc..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {disciplines.filter(d => d.is_active).map(d => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  <div className="flex items-center gap-1">
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }}></div>
+                                    {d.code}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        
+                        {/* Booking Code (Prestation) */}
+                        <td className="p-1">
+                          <Select 
+                            value={row.booking_code_id} 
+                            onValueChange={(v) => updateRowField(rowIndex, 'booking_code_id', v)}
+                            disabled={row.isLocked}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Prestation..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <div className="px-2 py-1 text-xs font-semibold text-emerald-600 bg-emerald-50">
+                                € FACTURABLE
+                              </div>
+                              {bookingCodes.filter(bc => bc.is_active && bc.is_billable).map(bc => (
+                                <SelectItem key={bc.id} value={bc.id}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                    <span className="font-mono text-[10px]">{bc.code}</span>
+                                    <span className="text-xs truncate max-w-[100px]">{bc.name}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                              <div className="px-2 py-1 text-xs font-semibold text-slate-600 bg-slate-50 mt-1">
+                                NON FACTURABLE
+                              </div>
+                              {bookingCodes.filter(bc => bc.is_active && !bc.is_billable).map(bc => (
+                                <SelectItem key={bc.id} value={bc.id}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+                                    <span className="font-mono text-[10px]">{bc.code}</span>
+                                    <span className="text-xs truncate max-w-[100px]">{bc.name}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {bookingCode && (
+                            <div className="mt-0.5">
+                              <BillableBadge isBillable={bookingCode.is_billable} size="sm" />
                             </div>
                           )}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedEntry(entry);
-                            fetchEntryTimeline(entry.id);
-                            setDetailDialogOpen(true);
-                          }}
+                        </td>
+                        
+                        {/* Activity */}
+                        <td className="p-1">
+                          <Select 
+                            value={row.activity_id} 
+                            onValueChange={(v) => updateRowField(rowIndex, 'activity_id', v)}
+                            disabled={row.isLocked}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Activité..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activities.filter(a => a.is_active).map(a => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        
+                        {/* Day columns */}
+                        {weekDays.map((day, dayIndex) => {
+                          const dateKey = day.toISOString().split('T')[0];
+                          const dayData = row.days[dateKey] || {};
+                          const isWeekend = dayIndex >= 5;
+                          const isLocked = dayData.status === 'validated' || row.isLocked;
+                          
+                          return (
+                            <td 
+                              key={dayIndex} 
+                              className={`p-1 text-center ${isWeekend ? 'bg-slate-50 dark:bg-slate-800/50' : ''}`}
+                            >
+                              <Input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                max="24"
+                                value={dayData.hours || ''}
+                                onChange={(e) => updateDayHours(rowIndex, dateKey, e.target.value)}
+                                disabled={isLocked}
+                                className={`h-8 w-14 text-center text-xs font-mono ${
+                                  isLocked ? 'bg-muted' : ''
+                                } ${dayData.hours > 0 ? 'font-bold' : ''}`}
+                                placeholder="0"
+                              />
+                              {dayData.status && dayData.status !== 'draft' && (
+                                <div className="mt-0.5">
+                                  <StatusBadge status={dayData.status} />
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                        
+                        {/* Row total */}
+                        <td className="p-1 text-center bg-accent/5">
+                          <span className={`font-mono font-bold ${rowTotal > 0 ? 'text-accent' : 'text-muted-foreground'}`}>
+                            {rowTotal.toFixed(1)}h
+                          </span>
+                        </td>
+                        
+                        {/* Delete */}
+                        <td className="p-1">
+                          {!row.isLocked && rows.length > 1 && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8"
+                              onClick={() => deleteRow(rowIndex)}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                            </Button>
+                          )}
+                          {row.isLocked && (
+                            <Lock className="h-4 w-4 text-muted-foreground mx-auto" />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  
+                  {/* Totals row */}
+                  <tr className="bg-muted/50 font-semibold">
+                    <td colSpan={4} className="p-2 text-right text-sm">Total journalier</td>
+                    {weekDays.map((day, dayIndex) => {
+                      const dateKey = day.toISOString().split('T')[0];
+                      const dayTotal = getDayTotal(dateKey);
+                      const isWeekend = dayIndex >= 5;
+                      
+                      return (
+                        <td 
+                          key={dayIndex} 
+                          className={`p-2 text-center ${isWeekend ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
                         >
-                          <Eye className="h-4 w-4 mr-2" />
-                          Détails
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                          <span className={`font-mono ${dayTotal > 0 ? 'text-accent' : 'text-muted-foreground'}`}>
+                            {dayTotal.toFixed(1)}h
+                          </span>
+                        </td>
+                      );
+                    })}
+                    <td className="p-2 text-center bg-accent/10">
+                      <span className="font-mono text-lg text-accent">{weekTotal.toFixed(1)}h</span>
+                    </td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Detail Dialog */}
-        <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+              <span>Facturable: {billableTotal.toFixed(1)}h ({billablePercent.toFixed(0)}%)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-slate-400"></div>
+              <span>Non facturable: {(weekTotal - billableTotal).toFixed(1)}h</span>
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={saveEntries} disabled={weekStatus === 'submitted'}>
+              <Save className="h-4 w-4 mr-2" />
+              Enregistrer
+            </Button>
+            <Button 
+              onClick={submitWeek} 
+              disabled={submitting || weekStatus === 'submitted' || weekTotal === 0}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {submitting ? 'Envoi...' : 'Soumettre la semaine'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Info Dialog */}
+        <Dialog open={infoDialogOpen} onOpenChange={setInfoDialogOpen}>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Détails de la saisie</DialogTitle>
-              <DialogDescription>Informations et historique des modifications</DialogDescription>
+              <DialogTitle>Guide de saisie du temps</DialogTitle>
+              <DialogDescription>
+                Comprendre le système de booking POSÉIDON
+              </DialogDescription>
             </DialogHeader>
-
-            {selectedEntry && (
-              <div className="space-y-6">
-                {/* Entry Info */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label className="text-muted-foreground">Projet</Label>
-                        <p className="font-medium">{getProjectName(selectedEntry.project_id)}</p>
-                      </div>
-                      <div>
-                        <Label className="text-muted-foreground">Date</Label>
-                        <p className="font-medium">{formatDate(selectedEntry.date)}</p>
-                      </div>
-                      <div>
-                        <Label className="text-muted-foreground">Discipline / Activité</Label>
-                        <p>{selectedEntry.discipline} / {selectedEntry.activity}</p>
-                      </div>
-                      <div>
-                        <Label className="text-muted-foreground">Heures</Label>
-                        <p className="text-2xl font-bold">{selectedEntry.currentHours || selectedEntry.hours}h</p>
-                      </div>
-                      <div className="col-span-2">
-                        <Label className="text-muted-foreground">Statut</Label>
-                        <div className="mt-1">
-                          <StatusBadge 
-                            status={selectedEntry.status} 
-                            lastEditedBy={selectedEntry.last_edited_by}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {selectedEntry.rejection_reason && (
-                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <Label className="text-red-700">Raison du rejet</Label>
-                        <p className="text-sm text-red-600 mt-1">{selectedEntry.rejection_reason}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Timeline */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Historique</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {entryTimeline.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        Aucun historique disponible
-                      </p>
-                    ) : (
-                      <div>
-                        {entryTimeline.map((event, idx) => (
-                          <TimelineEvent key={idx} event={event} users={users} />
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+            
+            <div className="space-y-4 text-sm">
+              <div>
+                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-emerald-500" />
+                  Règle centrale
+                </h4>
+                <p className="text-muted-foreground">
+                  Une heure est <strong>facturable</strong> si et seulement si la <strong>prestation (Booking Code)</strong> associée est facturable.
+                  Le projet ne détermine pas la facturation.
+                </p>
               </div>
-            )}
+              
+              <div>
+                <h4 className="font-semibold mb-2">Champs obligatoires</h4>
+                <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                  <li><strong>Projet</strong> - Sur quel projet travaillez-vous</li>
+                  <li><strong>Discipline</strong> - Votre domaine (BIM, CALCUL, DESIGN...)</li>
+                  <li><strong>Prestation</strong> - Type de travail (détermine la facturation)</li>
+                  <li><strong>Activité</strong> - Tâche spécifique réalisée</li>
+                </ul>
+              </div>
+              
+              <div>
+                <h4 className="font-semibold mb-2 text-emerald-600">Prestations facturables</h4>
+                <div className="flex flex-wrap gap-1">
+                  {bookingCodes.filter(bc => bc.is_billable).map(bc => (
+                    <Badge key={bc.id} variant="outline" className="text-xs bg-emerald-50 text-emerald-700">
+                      {bc.code}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="font-semibold mb-2 text-slate-600">Prestations non facturables</h4>
+                <div className="flex flex-wrap gap-1">
+                  {bookingCodes.filter(bc => !bc.is_billable).map(bc => (
+                    <Badge key={bc.id} variant="outline" className="text-xs bg-slate-50 text-slate-600">
+                      {bc.code}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="bg-amber-50 dark:bg-amber-950/20 p-3 rounded-lg">
+                <h4 className="font-semibold mb-1 text-amber-700">Attention aux réunions</h4>
+                <p className="text-xs text-amber-600">
+                  • <strong>CLIENT MEETING</strong> = Facturable<br/>
+                  • <strong>INTERNAL MEETING</strong> = Non facturable
+                </p>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
