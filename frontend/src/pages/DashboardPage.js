@@ -156,36 +156,48 @@ export default function DashboardPage() {
                   <CardDescription>Heures travaillées par projet ce mois</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart
-                      data={Array.isArray(dashboard.project_hours) 
-                        ? dashboard.project_hours.map(item => ({
-                            name: item.project_name || 'Projet inconnu',
-                            fullName: item.project_name || item.project_id,
-                            heures: item.hours
-                          }))
-                        : Object.entries(dashboard.project_hours).map(([projectId, hours]) => ({
-                            name: projects[projectId]?.name || 'Projet inconnu',
-                            fullName: projects[projectId]?.name || projectId,
-                            heures: hours
-                          }))}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis 
-                        dataKey="name" 
-                        stroke="hsl(var(--foreground))"
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                        interval={0}
-                      />
-                      <YAxis stroke="hsl(var(--foreground))">
-                        <Label value="Heures" angle={-90} position="insideLeft" />
-                      </YAxis>
-                      <Tooltip content={<CustomBarTooltip />} />
-                      <Bar dataKey="heures" fill="hsl(var(--accent))" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {(() => {
+                    const chartData = Array.isArray(dashboard.project_hours) 
+                      ? dashboard.project_hours.map(item => ({
+                          name: item.project_name || 'Projet inconnu',
+                          fullName: item.project_name || item.project_id,
+                          heures: Number(item.hours) || 0
+                        }))
+                      : Object.entries(dashboard.project_hours || {}).map(([projectId, hours]) => ({
+                          name: projects[projectId]?.name || 'Projet inconnu',
+                          fullName: projects[projectId]?.name || projectId,
+                          heures: Number(hours) || 0
+                        }));
+                    
+                    if (!chartData || chartData.length === 0) {
+                      return (
+                        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                          Aucune donnée disponible
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis 
+                            dataKey="name" 
+                            stroke="hsl(var(--foreground))"
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            interval={0}
+                          />
+                          <YAxis stroke="hsl(var(--foreground))">
+                            <Label value="Heures" angle={-90} position="insideLeft" />
+                          </YAxis>
+                          <Tooltip content={<CustomBarTooltip />} />
+                          <Bar dataKey="heures" fill="hsl(var(--accent))" radius={[8, 8, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>
