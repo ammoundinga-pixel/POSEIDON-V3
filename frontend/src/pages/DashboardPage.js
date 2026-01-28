@@ -320,45 +320,58 @@ export default function DashboardPage() {
                     <CardDescription>Distribution globale ce mois</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={350}>
-                      <BarChart
-                        data={Object.entries(dashboard.project_hours)
-                          .sort(([, a], [, b]) => b - a)
-                          .slice(0, 10)
+                    {(() => {
+                      // Handle both array format and object format
+                      let chartData = [];
+                      if (Array.isArray(dashboard.project_hours)) {
+                        chartData = dashboard.project_hours
+                          .map(item => ({
+                            name: item.project_name || projects[item.project_id]?.name || 'Projet inconnu',
+                            fullName: item.project_name || projects[item.project_id]?.name || item.project_id,
+                            heures: Number(item.hours) || 0
+                          }))
+                          .sort((a, b) => b.heures - a.heures)
+                          .slice(0, 10);
+                      } else if (dashboard.project_hours && typeof dashboard.project_hours === 'object') {
+                        chartData = Object.entries(dashboard.project_hours)
                           .map(([projectId, hours]) => ({
                             name: projects[projectId]?.name || 'Projet inconnu',
                             fullName: projects[projectId]?.name || projectId,
-                            heures: hours
-                          }))}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis 
-                          dataKey="name" 
-                          stroke="hsl(var(--foreground))"
-                          angle={-45}
-                          textAnchor="end"
-                          height={100}
-                          interval={0}
-                        />
-                        <YAxis stroke="hsl(var(--foreground))">
-                          <Label value="Heures" angle={-90} position="insideLeft" />
-                        </YAxis>
-                        <Tooltip
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              return (
-                                <div className="bg-card p-3 rounded-lg border border-border shadow-lg">
-                                  <p className="font-medium">{payload[0].payload.fullName}</p>
-                                  <p className="text-accent text-lg font-bold">{payload[0].value.toFixed(1)}h</p>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar dataKey="heures" fill="hsl(var(--accent))" radius={[8, 8, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                            heures: Number(hours) || 0
+                          }))
+                          .sort((a, b) => b.heures - a.heures)
+                          .slice(0, 10);
+                      }
+                      
+                      if (!chartData || chartData.length === 0) {
+                        return (
+                          <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                            Aucune donnée disponible
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <ResponsiveContainer width="100%" height={350}>
+                          <BarChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis 
+                              dataKey="name" 
+                              stroke="hsl(var(--foreground))"
+                              angle={-45}
+                              textAnchor="end"
+                              height={100}
+                              interval={0}
+                            />
+                            <YAxis stroke="hsl(var(--foreground))">
+                              <Label value="Heures" angle={-90} position="insideLeft" />
+                            </YAxis>
+                            <Tooltip content={<CustomBarTooltip />} />
+                            <Bar dataKey="heures" fill="hsl(var(--accent))" radius={[8, 8, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
               </div>
