@@ -16,6 +16,7 @@ import OrganizationPage from './pages/OrganizationPage';
 import ActivityPage from './pages/ActivityPage';
 import ProfilePage from './pages/ProfilePage';
 import PlanningPage from './pages/PlanningPage';
+import EmployeeCalendarPage from './pages/EmployeeCalendarPage';
 import './App.css';
 
 function App() {
@@ -94,6 +95,15 @@ function App() {
             element={
               <ProtectedRoute requiredRoles={['super_admin', 'admin', 'manager']}>
                 <PlanningPage />
+              </ProtectedRoute>
+            }
+          />
+          
+          <Route
+            path="/employee-calendar"
+            element={
+              <ProtectedRoute>
+                <EmployeeCalendarPage />
               </ProtectedRoute>
             }
           />
