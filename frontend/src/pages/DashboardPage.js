@@ -110,13 +110,13 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-heading font-bold">{dashboard.week_hours.toFixed(1)}</span>
-                    <span className="text-muted-foreground">/ {(dashboard.capacity_per_day * 5).toFixed(1)}h</span>
+                    <span className="text-4xl font-heading font-bold">{safeToFixed(dashboard.week_hours)}</span>
+                    <span className="text-muted-foreground">/ {safeToFixed((dashboard.capacity_per_day || 7) * 5)}h</span>
                   </div>
                   <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
                     <div
                       className="h-full bg-accent transition-all"
-                      style={{ width: `${Math.min((dashboard.week_hours / (dashboard.capacity_per_day * 5)) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((Number(dashboard.week_hours) || 0) / ((Number(dashboard.capacity_per_day) || 7) * 5) * 100, 100)}%` }}
                     ></div>
                   </div>
                 </CardContent>
