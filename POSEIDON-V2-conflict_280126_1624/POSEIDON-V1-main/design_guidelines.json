@@ -1,0 +1,166 @@
+{
+  "identity": {
+    "name": "E1 - The Precision Engineer",
+    "mission": "Create a hyper-intuitive, professional resource management tool that feels like a high-end engineering instrument. Precision, clarity, and hierarchy are paramount.",
+    "principles": [
+      "Fusion over Imitation: Mix Swiss Design precision with SaaS utility.",
+      "Emotion First: The user should feel 'in control' and 'efficient'.",
+      "Content is King: Data is the hero. Charts and calendars must be legible instantly.",
+      "Zoom In: Focus on the details of time and resource allocation.",
+      "Negative Space: Use whitespace to separate complex data sets."
+    ]
+  },
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Manrope",
+        "weights": ["600", "700", "800"],
+        "usage": "Page titles, Section headers, KPI values"
+      },
+      "body": {
+        "family": "Inter",
+        "weights": ["400", "500"],
+        "usage": "General text, descriptions, form labels"
+      },
+      "mono": {
+        "family": "JetBrains Mono",
+        "weights": ["400", "500"],
+        "usage": "Time entries, financial data, IDs, code snippets"
+      }
+    },
+    "rules": [
+      "Headings > 32px must use tracking-tight.",
+      "Overlines must be uppercase + tracking-widest + text-xs.",
+      "Use tabular-nums class for all data tables and timers."
+    ]
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "DEFAULT": "#0F172A",
+        "foreground": "#F8FAFC",
+        "description": "Deep Slate - The anchor of the engineering brand."
+      },
+      "secondary": {
+        "DEFAULT": "#F1F5F9",
+        "foreground": "#0F172A",
+        "description": "Technical Silver - For backgrounds and subtle containers."
+      },
+      "accent": {
+        "DEFAULT": "#3B82F6",
+        "foreground": "#FFFFFF",
+        "description": "Blueprint Blue - For primary actions and active states."
+      },
+      "background": {
+        "light": "#F8FAFC",
+        "dark": "#020617"
+      },
+      "status": {
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "error": "#EF4444",
+        "info": "#3B82F6"
+      }
+    },
+    "gradients": {
+      "subtle": "bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900",
+      "active": "bg-gradient-to-r from-blue-600 to-blue-500"
+    }
+  },
+  "layout": {
+    "spacing": {
+      "base": "p-6",
+      "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+      "section_gap": "gap-8"
+    },
+    "grids": {
+      "dashboard": "grid grid-cols-1 md:grid-cols-12 gap-6",
+      "bento_hero": "col-span-12 lg:col-span-8 row-span-2",
+      "bento_side": "col-span-12 lg:col-span-4 row-span-1"
+    },
+    "strategies": [
+      "Use the 'Tetris' grid for the main dashboard: Hero chart takes 2/3 width, quick actions take 1/3.",
+      "Calendar must be full-height (h-[calc(100vh-theme(spacing.16))]) for immersion.",
+      "Time entry grid must use dense spacing (p-2) but high legibility."
+    ]
+  },
+  "components": {
+    "buttons": {
+      "primary": "rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all active:scale-95",
+      "secondary": "rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm",
+      "ghost": "rounded-md hover:bg-accent hover:text-accent-foreground"
+    },
+    "cards": {
+      "style": "rounded-xl border border-border/50 bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow duration-200",
+      "glass": "backdrop-blur-xl bg-white/70 dark:bg-black/60 border border-white/20 shadow-lg"
+    },
+    "inputs": {
+      "style": "rounded-md border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+    },
+    "calendar": {
+      "library": "react-big-calendar",
+      "style": "modern-clean",
+      "customization": "Remove default heavy borders. Use rounded events. Color code by 'Discipline' (STR, CVC, BIM)."
+    },
+    "charts": {
+      "library": "recharts",
+      "style": "minimal",
+      "rules": "Hide grid lines where possible. Use tooltips for details. Use the defined color palette."
+    }
+  },
+  "images": {
+    "login_bg": {
+      "url": "https://images.unsplash.com/photo-1761489798195-7d29571460be?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "alt": "Modern Engineering Structure",
+      "category": "background"
+    },
+    "dashboard_hero": {
+      "url": "https://images.unsplash.com/photo-1503387837-b154d5074bd2?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "alt": "Drafting Blueprints",
+      "category": "hero"
+    },
+    "team_placeholder": {
+      "url": "https://images.unsplash.com/photo-1636484227625-c659d25dc1b1?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "alt": "Engineer at Laptop",
+      "category": "content"
+    }
+  },
+  "visual_enhancers": {
+    "shadows": "shadow-[0_2px_8px_rgba(0,0,0,0.08)]",
+    "borders": "border border-slate-200 dark:border-slate-800",
+    "glassmorphism": "backdrop-blur-md bg-white/80 dark:bg-slate-900/80",
+    "micro_interactions": "All interactive elements must have a hover state (color shift or lift)."
+  },
+  "universal_guidelines": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy",
+    "Use glass-morphism effects with backdrop filters (12-24px blur)",
+    "You MUST NOT apply universal transition. Eg: transition: all. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file. This disrupts the human natural reading flow of text",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯📚🎭🎬🎪🎉🎊🎁🎀🎂🍰🎈🎨🎰💰💵💳🏦💎🪙💸🤑📊📈📉💹🔢🏆🥇 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN",
+    "Prioritize using pre-existing components from src/components/ui when applicable",
+    "Create new components that match the style and conventions of existing components when needed",
+    "Examine existing components to understand the project's component patterns before creating new ones",
+    "Components MUST use named exports (export const ComponentName = ...)",
+    "Pages MUST use default exports (export default function PageName() {...})",
+    "Use sonner for toasts. Sonner component are located in /app/src/components/ui/sonner.tsx"
+  ],
+  "instructions_to_main_agent": [
+    "1. SETUP: Install 'lucide-react', 'recharts', 'react-big-calendar', 'date-fns', 'framer-motion', 'clsx', 'tailwind-merge' if not present.",
+    "2. THEME: Configure tailwind.config.js with the 'Precision Engineer' palette (Slate + Royal Blue).",
+    "3. LAYOUT: Create a 'DashboardLayout' component with a collapsible sidebar and a sticky glassmorphic header.",
+    "4. CALENDAR: Implement the central calendar using 'react-big-calendar'. Customize the toolbar and event components to match the design system.",
+    "5. TIME ENTRY: Build the 'WeeklyGrid' component. It must be dense but readable. Use 'JetBrains Mono' for the input fields.",
+    "6. CHARTS: Create reusable chart components (WorkloadChart, ProjectDistribution) using Recharts. Ensure they are responsive.",
+    "7. AUTH: Create a Login page using the 'Modern Engineering Structure' image as a split-screen background.",
+    "8. HIERARCHY: Implement role-based rendering (Super Admin vs Employee views).",
+    "9. TESTING: Add data-testid to all interactive elements."
+  ]
+}
