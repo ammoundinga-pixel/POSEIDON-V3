@@ -683,6 +683,271 @@ def add_presence_routes(api_router, db, get_current_user):
         await db.presence.update_one({'id': presence_id}, {'$set': update_data})
         return await db.presence.find_one({'id': presence_id}, {'_id': 0})
 
+def add_employee_calendar_routes(api_router, db, get_current_user):
+    """Routes for employee monthly calendar/planning (Excel-style RH view)"""
+    
+    # French public holidays
+    FRENCH_HOLIDAYS_2025 = [
+        '2025-01-01', '2025-04-21', '2025-05-01', '2025-05-08', '2025-05-29',
+        '2025-06-09', '2025-07-14', '2025-08-15', '2025-11-01', '2025-11-11', '2025-12-25'
+    ]
+    FRENCH_HOLIDAYS_2026 = [
+        '2026-01-01', '2026-04-06', '2026-05-01', '2026-05-08', '2026-05-14',
+        '2026-05-25', '2026-07-14', '2026-08-15', '2026-11-01', '2026-11-11', '2026-12-25'
+    ]
+    
+    PRESENCE_CODES = {
+        'M': {'label': 'Monaco', 'color': '#3B82F6', 'blocks_timeentry': False},
+        'N': {'label': 'Nice', 'color': '#10B981', 'blocks_timeentry': False},
+        'P': {'label': 'Paris', 'color': '#8B5CF6', 'blocks_timeentry': False},
+        'T': {'label': 'Télétravail', 'color': '#F59E0B', 'blocks_timeentry': False},
+        'C': {'label': 'Client', 'color': '#EC4899', 'blocks_timeentry': False, 'prefill_timeentry': True},
+        'D': {'label': 'Déplacement', 'color': '#14B8A6', 'blocks_timeentry': False, 'prefill_timeentry': True},
+        'E': {'label': 'École', 'color': '#6366F1', 'blocks_timeentry': True},
+        'A': {'label': 'Congés', 'color': '#EF4444', 'blocks_timeentry': True},
+        'F': {'label': 'Férié', 'color': '#64748B', 'blocks_timeentry': True},
+        'W': {'label': 'Week-end', 'color': '#94A3B8', 'blocks_timeentry': True},
+        '½': {'label': 'Demi-journée', 'color': '#FBBF24', 'blocks_timeentry': False}
+    }
+    
+    @api_router.get('/employee-calendar/codes')
+    async def get_presence_codes(current_user: dict = Depends(get_current_user)):
+        """Get all presence codes and their colors"""
+        return PRESENCE_CODES
+    
+    @api_router.get('/employee-calendar/holidays')
+    async def get_holidays(year: int, current_user: dict = Depends(get_current_user)):
+        """Get public holidays for a given year"""
+        if year == 2025:
+            return FRENCH_HOLIDAYS_2025
+        elif year == 2026:
+            return FRENCH_HOLIDAYS_2026
+        return []
+    
+    @api_router.get('/employee-calendar/month')
+    async def get_month_calendar(
+        year: int,
+        month: int,
+        department: Optional[str] = None,
+        team_id: Optional[str] = None,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """Get monthly calendar data for all employees (Excel-style view)"""
+        
+        # Build user query based on filters
+        user_query = {'is_active': True}
+        if department:
+            user_query['department'] = department
+        if team_id:
+            user_query['team_id'] = team_id
+        
+        # Get users based on role permissions
+        if current_user['role'] == 'employee':
+            # Employee can only see their own calendar
+            user_query['id'] = current_user['id']
+        elif current_user['role'] == 'manager':
+            # Manager can see their team
+            manager_team = await db.teams.find_one({'manager_id': current_user['id']})
+            if manager_team:
+                user_query['$or'] = [
+                    {'id': current_user['id']},
+                    {'team_id': manager_team['id']},
+                    {'id': {'$in': manager_team.get('member_ids', [])}}
+                ]
+            else:
+                user_query['id'] = current_user['id']
+        # Admin/Super admin can see everyone
+        
+        users = await db.users.find(user_query, {'_id': 0, 'password_hash': 0}).to_list(1000)
+        
+        # Get calendar entries for the month
+        start_date = f'{year}-{month:02d}-01'
+        if month == 12:
+            end_date = f'{year+1}-01-01'
+        else:
+            end_date = f'{year}-{month+1:02d}-01'
+        
+        user_ids = [u['id'] for u in users]
+        
+        calendar_entries = await db.employee_calendar.find({
+            'user_id': {'$in': user_ids},
+            'date': {'$gte': start_date, '$lt': end_date}
+        }, {'_id': 0}).to_list(50000)
+        
+        # Build calendar data structure
+        calendar_by_user = {}
+        for entry in calendar_entries:
+            if entry['user_id'] not in calendar_by_user:
+                calendar_by_user[entry['user_id']] = {}
+            date_key = entry['date'].split('T')[0]
+            calendar_by_user[entry['user_id']][date_key] = entry
+        
+        # Get holidays
+        holidays = FRENCH_HOLIDAYS_2026 if year == 2026 else FRENCH_HOLIDAYS_2025
+        
+        # Get teams for grouping
+        teams = await db.teams.find({}, {'_id': 0}).to_list(100)
+        team_map = {t['id']: t for t in teams}
+        
+        return {
+            'year': year,
+            'month': month,
+            'users': users,
+            'calendar_data': calendar_by_user,
+            'holidays': holidays,
+            'presence_codes': PRESENCE_CODES,
+            'teams': teams
+        }
+    
+    @api_router.post('/employee-calendar/entry')
+    async def create_or_update_calendar_entry(
+        entry_data: dict,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """Create or update a calendar entry for a specific date"""
+        user_id = entry_data.get('user_id', current_user['id'])
+        date = entry_data['date'].split('T')[0]  # Normalize date
+        
+        # Check permissions
+        if user_id != current_user['id'] and current_user['role'] not in ['super_admin', 'admin', 'manager']:
+            raise HTTPException(403, 'Not enough permissions')
+        
+        # Check if entry already exists
+        existing = await db.employee_calendar.find_one({
+            'user_id': user_id,
+            'date': date
+        })
+        
+        entry = {
+            'user_id': user_id,
+            'date': date,
+            'code': entry_data['code'],
+            'half_day': entry_data.get('half_day', False),
+            'half_day_period': entry_data.get('half_day_period'),  # 'AM' or 'PM'
+            'comment': entry_data.get('comment', ''),
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+            'updated_by': current_user['id']
+        }
+        
+        if existing:
+            # Create history entry
+            history_entry = {
+                'id': str(__import__('uuid').uuid4()),
+                'calendar_entry_id': existing['id'],
+                'user_id': user_id,
+                'date': date,
+                'old_code': existing.get('code'),
+                'new_code': entry_data['code'],
+                'changed_by': current_user['id'],
+                'changed_at': datetime.now(timezone.utc).isoformat()
+            }
+            await db.calendar_history.insert_one(history_entry)
+            
+            await db.employee_calendar.update_one(
+                {'id': existing['id']},
+                {'$set': entry}
+            )
+            entry['id'] = existing['id']
+        else:
+            entry['id'] = str(__import__('uuid').uuid4())
+            entry['created_at'] = datetime.now(timezone.utc).isoformat()
+            entry['created_by'] = current_user['id']
+            await db.employee_calendar.insert_one(entry)
+        
+        # Sync with time entries if needed
+        code_info = PRESENCE_CODES.get(entry_data['code'], {})
+        if code_info.get('blocks_timeentry'):
+            # Mark time entries for this date as blocked
+            pass  # This can be handled on frontend or via separate logic
+        
+        return {k: v for k, v in entry.items() if k != '_id'}
+    
+    @api_router.post('/employee-calendar/bulk-entry')
+    async def create_bulk_calendar_entries(
+        bulk_data: dict,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """Create multiple calendar entries at once (drag selection)"""
+        if current_user['role'] not in ['super_admin', 'admin', 'manager']:
+            raise HTTPException(403, 'Not enough permissions')
+        
+        user_id = bulk_data['user_id']
+        dates = bulk_data['dates']  # List of dates
+        code = bulk_data['code']
+        half_day = bulk_data.get('half_day', False)
+        comment = bulk_data.get('comment', '')
+        
+        created_entries = []
+        for date in dates:
+            date_normalized = date.split('T')[0]
+            
+            existing = await db.employee_calendar.find_one({
+                'user_id': user_id,
+                'date': date_normalized
+            })
+            
+            entry = {
+                'user_id': user_id,
+                'date': date_normalized,
+                'code': code,
+                'half_day': half_day,
+                'comment': comment,
+                'updated_at': datetime.now(timezone.utc).isoformat(),
+                'updated_by': current_user['id']
+            }
+            
+            if existing:
+                await db.employee_calendar.update_one(
+                    {'id': existing['id']},
+                    {'$set': entry}
+                )
+                entry['id'] = existing['id']
+            else:
+                entry['id'] = str(__import__('uuid').uuid4())
+                entry['created_at'] = datetime.now(timezone.utc).isoformat()
+                entry['created_by'] = current_user['id']
+                await db.employee_calendar.insert_one(entry)
+            
+            created_entries.append({k: v for k, v in entry.items() if k != '_id'})
+        
+        return {'created': len(created_entries), 'entries': created_entries}
+    
+    @api_router.delete('/employee-calendar/entry/{entry_id}')
+    async def delete_calendar_entry(
+        entry_id: str,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """Delete a calendar entry"""
+        entry = await db.employee_calendar.find_one({'id': entry_id})
+        if not entry:
+            raise HTTPException(404, 'Entry not found')
+        
+        if entry['user_id'] != current_user['id'] and current_user['role'] not in ['super_admin', 'admin', 'manager']:
+            raise HTTPException(403, 'Not enough permissions')
+        
+        await db.employee_calendar.delete_one({'id': entry_id})
+        return {'message': 'Entry deleted'}
+    
+    @api_router.get('/employee-calendar/history')
+    async def get_calendar_history(
+        user_id: Optional[str] = None,
+        date: Optional[str] = None,
+        limit: int = 100,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """Get modification history for calendar entries"""
+        if current_user['role'] not in ['super_admin', 'admin', 'manager']:
+            raise HTTPException(403, 'Not enough permissions')
+        
+        query = {}
+        if user_id:
+            query['user_id'] = user_id
+        if date:
+            query['date'] = date.split('T')[0]
+        
+        history = await db.calendar_history.find(query, {'_id': 0}).sort('changed_at', -1).limit(limit).to_list(limit)
+        return history
+
 def add_team_routes(api_router, db, get_current_user):
     """Routes for team/organization management"""
     
