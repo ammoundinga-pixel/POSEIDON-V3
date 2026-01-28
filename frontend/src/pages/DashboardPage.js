@@ -9,12 +9,18 @@ import { Clock, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
+// Helper function to safely format numbers
+const safeToFixed = (value, decimals = 1) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num.toFixed(decimals) : '0.0';
+};
+
 const CustomBarTooltip = ({ active, payload }) => {
-  if (active && payload && payload.length) {
+  if (active && payload && payload.length && payload[0]?.value != null) {
     return (
       <div className="bg-card p-3 rounded-lg border border-border shadow-lg">
-        <p className="font-medium">{payload[0].payload.fullName}</p>
-        <p className="text-accent text-lg font-bold">{payload[0].value.toFixed(1)}h</p>
+        <p className="font-medium">{payload[0].payload?.fullName || 'Projet'}</p>
+        <p className="text-accent text-lg font-bold">{safeToFixed(payload[0].value)}h</p>
       </div>
     );
   }
@@ -22,11 +28,11 @@ const CustomBarTooltip = ({ active, payload }) => {
 };
 
 const CustomPieTooltip = ({ active, payload }) => {
-  if (active && payload && payload.length) {
+  if (active && payload && payload.length && payload[0]?.value != null) {
     return (
       <div className="bg-card p-3 rounded-lg border border-border shadow-lg">
-        <p className="font-medium">{payload[0].name}</p>
-        <p className="text-accent text-lg font-bold">{payload[0].value.toFixed(1)}h</p>
+        <p className="font-medium">{payload[0].name || 'Type'}</p>
+        <p className="text-accent text-lg font-bold">{safeToFixed(payload[0].value)}h</p>
       </div>
     );
   }
