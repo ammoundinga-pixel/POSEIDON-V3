@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   LayoutDashboard,
   Calendar,
+  CalendarDays,
   Clock,
   Users,
   Briefcase,
@@ -36,6 +37,7 @@ export const DashboardLayout = ({ children }) => {
     { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin', 'manager', 'employee'] },
     { name: 'Calendrier', href: '/calendar', icon: Calendar, roles: ['super_admin', 'admin', 'manager', 'employee'] },
     { name: 'Saisie du temps', href: '/time-entry', icon: Clock, roles: ['super_admin', 'admin', 'manager', 'employee'] },
+    { name: 'Planning RH', href: '/employee-calendar', icon: CalendarDays, roles: ['super_admin', 'admin', 'manager', 'employee'] },
     { name: 'Planning', href: '/planning', icon: Calendar, roles: ['super_admin', 'admin', 'manager'] },
     { name: 'Activité', href: '/activity', icon: ActivityIcon, roles: ['super_admin', 'admin', 'manager'] },
     { name: 'Validation', href: '/validation', icon: CheckSquare, roles: ['super_admin', 'admin', 'manager'] },
