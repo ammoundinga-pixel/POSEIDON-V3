@@ -451,26 +451,13 @@ export default function EmployeeCalendarPage() {
         {/* Calendar Table */}
         <div className="bg-card border rounded-lg overflow-hidden">
           <div className="overflow-x-auto" ref={tableRef}>
-            <table className="w-full border-collapse min-w-max" style={{ tableLayout: 'fixed' }}>
+            <table className="w-full border-collapse" style={{ minWidth: `${180 + days.length * 40}px` }}>
               <thead>
-                {/* Week row */}
-                <tr className="bg-muted/50">
-                  <th className="sticky left-0 z-20 bg-muted/50 border-r border-b p-2 w-[180px] text-left text-xs font-semibold">
-                    Employé
-                  </th>
-                  {Object.entries(weekGroups).map(([weekNum, weekDays]) => (
-                    <th
-                      key={weekNum}
-                      colSpan={weekDays.length}
-                      className="border-b border-r p-1 text-center text-xs font-medium text-muted-foreground bg-muted/30"
-                    >
-                      S{weekNum}
-                    </th>
-                  ))}
-                </tr>
                 {/* Day headers */}
                 <tr className="bg-secondary/50">
-                  <th className="sticky left-0 z-20 bg-secondary/50 border-r border-b p-2 w-[180px]"></th>
+                  <th className="sticky left-0 z-20 bg-secondary/50 border-r border-b p-2 min-w-[180px] text-left text-xs font-semibold">
+                    Employé
+                  </th>
                   {days.map(day => {
                     const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                     const isHoliday = holidays.includes(day.toISOString().split('T')[0]);
@@ -479,7 +466,7 @@ export default function EmployeeCalendarPage() {
                     return (
                       <th
                         key={day.toISOString()}
-                        className={`border-b border-r p-1 text-center min-w-[36px] w-[36px] ${
+                        className={`border-b border-r p-1 text-center w-[40px] ${
                           isWeekend ? 'bg-slate-200 dark:bg-slate-700' : 
                           isHoliday ? 'bg-gray-200 dark:bg-gray-700' : ''
                         } ${isToday ? 'ring-2 ring-accent ring-inset' : ''}`}
@@ -512,7 +499,7 @@ export default function EmployeeCalendarPage() {
                     {/* User rows */}
                     {groupUsers.map(usr => (
                       <tr key={usr.id} className="hover:bg-muted/20 group">
-                        <td className="sticky left-0 z-10 bg-background group-hover:bg-muted/20 border-r border-b p-2 w-[180px]">
+                        <td className="sticky left-0 z-10 bg-background group-hover:bg-muted/20 border-r border-b p-2 min-w-[180px]">
                           <div className="truncate">
                             <span className="font-medium text-sm">{usr.first_name} {usr.last_name}</span>
                           </div>
@@ -533,7 +520,7 @@ export default function EmployeeCalendarPage() {
                             <td
                               key={day.toISOString()}
                               data-testid={`cell-${usr.id}-${day.getDate()}`}
-                              className={`border-b border-r p-0 text-center cursor-pointer select-none transition-all min-w-[36px] w-[36px] h-[40px] ${
+                              className={`border-b border-r p-0 text-center cursor-pointer select-none transition-all w-[40px] h-[44px] ${
                                 isSelected ? 'ring-2 ring-accent ring-inset' : ''
                               } ${!canEdit ? 'cursor-default' : 'hover:opacity-80'} ${
                                 isWeekend && !cellData ? 'bg-slate-100 dark:bg-slate-800' : ''
