@@ -123,25 +123,42 @@ def add_master_data_routes(api_router, db, get_current_user):
     
     @api_router.get('/project-assignments/my-projects')
     async def get_my_assigned_projects(current_user: dict = Depends(get_current_user)):
-        """Get projects where current user is assigned"""
-        # Admins see all projects
-        if current_user['role'] in ['super_admin', 'admin']:
+        """Get projects where current user can enter time"""
+        # Admins and managers see all active projects
+        if current_user['role'] in ['super_admin', 'admin', 'manager']:
             projects = await db.projects.find({'status': {'$ne': 'archived'}}, {'_id': 0}).to_list(1000)
             return projects
         
-        # Get user's assignments
+        # For employees: get assigned projects + projects where they already have time entries
+        project_ids = set()
+        
+        # 1. Get user's formal assignments
         assignments = await db.project_assignments.find(
             {'user_id': current_user['id'], 'is_active': True},
             {'_id': 0}
         ).to_list(100)
         
-        project_ids = [a['project_id'] for a in assignments]
+        for a in assignments:
+            project_ids.add(a['project_id'])
         
+        # 2. Get projects from existing time entries (allows continuity)
+        existing_entries = await db.time_entries.find(
+            {'user_id': current_user['id']},
+            {'project_id': 1}
+        ).to_list(1000)
+        
+        for e in existing_entries:
+            if e.get('project_id'):
+                project_ids.add(e['project_id'])
+        
+        # 3. If still no projects, show all active projects (for new employees)
         if not project_ids:
-            return []
+            projects = await db.projects.find({'status': {'$ne': 'archived'}}, {'_id': 0}).to_list(1000)
+            return projects
         
+        # Get project details
         projects = await db.projects.find(
-            {'id': {'$in': project_ids}, 'status': {'$ne': 'archived'}},
+            {'id': {'$in': list(project_ids)}, 'status': {'$ne': 'archived'}},
             {'_id': 0}
         ).to_list(1000)
         
