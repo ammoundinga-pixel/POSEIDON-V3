@@ -118,13 +118,6 @@ export default function LoginPage() {
               {loading ? 'Connexion...' : 'Se connecter'}
             </Button>
           </form>
-
-          <div className="mt-8 pt-6 border-t border-border">
-            <p className="text-sm text-muted-foreground text-center">
-              Compte de test : <span className="font-mono text-foreground">admin@poseidon.com</span> /{' '}
-              <span className="font-mono text-foreground">admin123</span>
-            </p>
-          </div>
         </div>
       </div>
     </div>
